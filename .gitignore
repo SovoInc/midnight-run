@@ -1,6 +1,7 @@
 frontend/node_modules
 frontend/dist
 server/target
+server/static
 server/.vite
 server/*.db
 server/*.db-shm
