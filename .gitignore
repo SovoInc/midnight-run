@@ -1,0 +1,8 @@
+frontend/node_modules
+frontend/dist
+server/target
+server/.vite
+server/*.db
+server/*.db-shm
+server/*.db-wal
+.DS_Store
