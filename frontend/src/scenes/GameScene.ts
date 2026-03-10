@@ -508,16 +508,23 @@ export class GameScene extends Phaser.Scene {
     const newAchievements = await this.achievements.checkAll(runStats);
 
     this.time.delayedCall(1500, () => {
-      this.scene.start("GameOverScene", {
-        player: this.playerData,
-        score: this.score,
-        distance: Math.floor(this.distance),
-        orbsCollected: this.orbsCollected,
-        nearMisses: this.nearMisses,
-        dashesUsed: this.dashesUsed,
-        wallsBroken: this.wallsBroken,
-        duration,
-        newAchievements,
+      // Snapshot the current frame as a texture for the game over background
+      if (this.textures.exists("gameover-snapshot")) {
+        this.textures.remove("gameover-snapshot");
+      }
+      this.renderer.snapshot((image) => {
+        this.textures.addImage("gameover-snapshot", image as HTMLImageElement);
+        this.scene.start("GameOverScene", {
+          player: this.playerData,
+          score: this.score,
+          distance: Math.floor(this.distance),
+          orbsCollected: this.orbsCollected,
+          nearMisses: this.nearMisses,
+          dashesUsed: this.dashesUsed,
+          wallsBroken: this.wallsBroken,
+          duration,
+          newAchievements,
+        });
       });
     });
   }

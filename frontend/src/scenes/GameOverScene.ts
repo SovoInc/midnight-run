@@ -29,7 +29,11 @@ export class GameOverScene extends Phaser.Scene {
     const cx = GAME_WIDTH / 2;
     const d = this.runResult;
 
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12, 0.85).setOrigin(0);
+    // Show last frame of gameplay as background
+    if (this.textures.exists("gameover-snapshot")) {
+      this.add.image(0, 0, "gameover-snapshot").setOrigin(0).setDepth(-1);
+    }
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12, 0.7).setOrigin(0);
 
     const dead = this.add.sprite(cx, 80, "player-death").setScale(1.5);
     dead.play("anim-death");
