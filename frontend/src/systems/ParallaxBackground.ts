@@ -16,6 +16,48 @@ interface Bat {
   maxAlpha: number;
 }
 
+export function drawMoon(scene: Phaser.Scene, mx: number, my: number, depth: number) {
+  // Outer glow
+  scene.add.circle(mx, my, 60, 0xf6dd9c, 0.06).setScrollFactor(0).setDepth(depth);
+  scene.add.circle(mx, my, 44, 0xf6dd9c, 0.10).setScrollFactor(0).setDepth(depth);
+  scene.add.circle(mx, my, 30, 0xfceabb, 0.18).setScrollFactor(0).setDepth(depth);
+
+  // Moon body
+  const r = 22;
+  scene.add.circle(mx, my, r, 0xfff8e7, 1).setScrollFactor(0).setDepth(depth + 1);
+
+  // Lunar maria
+  const maria = scene.add.graphics().setScrollFactor(0).setDepth(depth + 2);
+  maria.fillStyle(0xd6ceaa, 0.45);
+  maria.fillEllipse(mx - 5, my - 4, 18, 16);
+  maria.fillStyle(0xd6ceaa, 0.38);
+  maria.fillEllipse(mx + 8, my - 6, 11, 10);
+  maria.fillStyle(0xd0c8a0, 0.40);
+  maria.fillEllipse(mx + 10, my + 2, 12, 9);
+  maria.fillStyle(0xccc4a0, 0.35);
+  maria.fillEllipse(mx + 14, my - 2, 7, 6);
+  maria.fillStyle(0xd4cca6, 0.32);
+  maria.fillEllipse(mx - 4, my + 8, 14, 10);
+  maria.fillStyle(0xd0c8a0, 0.30);
+  maria.fillEllipse(mx + 6, my + 9, 9, 7);
+  maria.fillStyle(0xd8d0ae, 0.28);
+  maria.fillEllipse(mx - 12, my + 2, 10, 18);
+
+  // Small craters
+  maria.fillStyle(0xc8c098, 0.30);
+  maria.fillCircle(mx - 8, my + 14, 2.5);
+  maria.fillCircle(mx + 3, my - 12, 2);
+  maria.fillCircle(mx + 15, my + 8, 1.5);
+  maria.fillStyle(0xffffff, 0.15);
+  maria.fillCircle(mx - 1, my + 12, 1.8);
+  maria.fillCircle(mx + 11, my - 10, 1.2);
+
+  // Clip maria to moon circle
+  const moonMask = scene.make.graphics({ x: 0, y: 0, add: false });
+  moonMask.fillCircle(mx, my, r);
+  maria.setMask(moonMask.createGeometryMask());
+}
+
 export class ParallaxBackground {
   private layers: Layer[] = [];
   private bats: Bat[] = [];
@@ -26,18 +68,13 @@ export class ParallaxBackground {
     const back = scene.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, "bg-back")
       .setOrigin(0).setScale(scaleY).setScrollFactor(0).setDepth(-30);
 
-    scene.add.circle(GAME_WIDTH * 0.78, GAME_HEIGHT * 0.2, 34, 0xf6dd9c, 0.14)
-      .setScrollFactor(0)
-      .setDepth(-29);
-    scene.add.circle(GAME_WIDTH * 0.78, GAME_HEIGHT * 0.2, 22, 0xfff2bf, 0.9)
-      .setScrollFactor(0)
-      .setDepth(-28);
+    drawMoon(scene, GAME_WIDTH * 0.78, GAME_HEIGHT * 0.2, -29);
 
     const mid = scene.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, "bg-mid")
-      .setOrigin(0).setScale(scaleY).setScrollFactor(0).setDepth(-20).setAlpha(0.8);
+      .setOrigin(0).setScale(scaleY).setScrollFactor(0).setDepth(-20);
 
     const front = scene.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, "bg-front")
-      .setOrigin(0).setScale(scaleY).setScrollFactor(0).setDepth(-10).setAlpha(0.6);
+      .setOrigin(0).setScale(scaleY).setScrollFactor(0).setDepth(-10);
 
     this.layers = [
       { sprite: back, speedFactor: 0.15 },

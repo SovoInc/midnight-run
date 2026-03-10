@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
 import { api, PlayerData } from "../api";
+import { drawMoon } from "../systems/ParallaxBackground";
 
 interface MenuBat {
   sprite: Phaser.GameObjects.Sprite;
@@ -38,10 +39,7 @@ export class MenuScene extends Phaser.Scene {
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12, 0.6).setOrigin(0).setDepth(0);
 
     // Moon (above overlay)
-    const moonX = GAME_WIDTH * 0.78;
-    const moonY = GAME_HEIGHT * 0.18;
-    this.add.circle(moonX, moonY, 34, 0xf6dd9c, 0.18).setDepth(1);
-    this.add.circle(moonX, moonY, 22, 0xfff2bf, 0.85).setDepth(1);
+    drawMoon(this, GAME_WIDTH * 0.78, GAME_HEIGHT * 0.18, 1);
 
     // Bats (above overlay)
     this.bats = [];
