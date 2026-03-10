@@ -63,8 +63,9 @@ export class PlatformManager {
       const col = this.columns[i];
       col.x -= dx;
 
+      const roundedX = Math.round(col.x);
       for (const s of col.sprites) {
-        s.x = col.x;
+        s.x = roundedX;
       }
 
       if (col.body) {

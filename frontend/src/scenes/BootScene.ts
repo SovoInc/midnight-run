@@ -65,7 +65,7 @@ export class BootScene extends Phaser.Scene {
     this.anims.create({ key: "anim-lightning", frames: this.anims.generateFrameNumbers("lightning", { start: 0, end: 9 }), frameRate: 8, repeat: -1 });
     this.anims.create({ key: "anim-toxic", frames: this.anims.generateFrameNumbers("toxic", { start: 0, end: 59 }), frameRate: 12, repeat: -1 });
     this.anims.create({ key: "anim-lava", frames: this.anims.generateFrameNumbers("lava", { start: 0, end: 15 }), frameRate: 8, repeat: -1 });
-    this.anims.create({ key: "anim-bat-sky", frames: this.anims.generateFrameNumbers("bat-sky", { start: 0, end: 5 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: "anim-bat-sky", frames: this.anims.generateFrameNumbers("bat-sky", { start: 0, end: 4 }), frameRate: 10, repeat: -1 });
 
     this.scene.start("MenuScene");
   }
