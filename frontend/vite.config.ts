@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? "/g/midnight-run/" : "/",
   build: {
     outDir: "../server/static",
     emptyOutDir: true,
@@ -12,4 +13,4 @@ export default defineConfig({
       "/achievements": "http://localhost:3001",
     },
   },
-});
+}));

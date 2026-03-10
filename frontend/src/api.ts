@@ -1,4 +1,4 @@
-const BASE = "";
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export interface PlayerData {
   id: number;
