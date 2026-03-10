@@ -60,6 +60,9 @@ export class GameScene extends Phaser.Scene {
   private pointerHandler?: (pointer: Phaser.Input.Pointer) => void;
   private doubleJumpHintShown = false;
   private dashHintShown = false;
+  private isMobile = false;
+  private jumpBtn?: Phaser.GameObjects.Container;
+  private dashBtn?: Phaser.GameObjects.Container;
 
   constructor() {
     super("GameScene");
@@ -122,14 +125,20 @@ export class GameScene extends Phaser.Scene {
     this.upKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
     this.dashKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
 
-    this.pointerHandler = (pointer: Phaser.Input.Pointer) => {
-      if (pointer.y > GAME_HEIGHT * 0.6) {
-        this.doDash();
-      } else {
-        this.doJump();
-      }
-    };
-    this.input.on("pointerdown", this.pointerHandler);
+    this.isMobile = !this.sys.game.device.os.desktop;
+
+    if (this.isMobile) {
+      this.createTouchControls();
+    } else {
+      this.pointerHandler = (pointer: Phaser.Input.Pointer) => {
+        if (pointer.y > GAME_HEIGHT * 0.6) {
+          this.doDash();
+        } else {
+          this.doJump();
+        }
+      };
+      this.input.on("pointerdown", this.pointerHandler);
+    }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanupInputs());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanupInputs());
 
@@ -186,8 +195,12 @@ export class GameScene extends Phaser.Scene {
 
     this.updateHearts();
     this.updateShieldVisuals();
-    this.time.delayedCall(600, () => this.showToast("SPACE / UP TO JUMP"));
-    this.time.delayedCall(2400, () => this.showToast("DOWN TO DASH"));
+    if (this.isMobile) {
+      this.time.delayedCall(600, () => this.showToast("TAP JUMP & DASH"));
+    } else {
+      this.time.delayedCall(600, () => this.showToast("SPACE / UP TO JUMP"));
+      this.time.delayedCall(2400, () => this.showToast("DOWN TO DASH"));
+    }
 
     if (!this.registry.get("musicPlaying")) {
       try {
@@ -250,6 +263,45 @@ export class GameScene extends Phaser.Scene {
       this.input.off("pointerdown", this.pointerHandler);
       this.pointerHandler = undefined;
     }
+  }
+
+  private createTouchControls() {
+    const btnW = 100;
+    const btnH = 56;
+    const pad = 16;
+    const y = GAME_HEIGHT - btnH / 2 - pad;
+
+    // Jump button - left side
+    const jumpBg = this.add.rectangle(0, 0, btnW, btnH, 0x7b2d8e, 0.5)
+      .setStrokeStyle(2, 0xc850c0, 0.7);
+    const jumpLabel = this.add.text(0, 0, "JUMP", {
+      fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#ffffff",
+    }).setOrigin(0.5);
+    this.jumpBtn = this.add.container(btnW / 2 + pad, y, [jumpBg, jumpLabel])
+      .setScrollFactor(0).setDepth(200).setAlpha(0.7);
+    jumpBg.setInteractive();
+    jumpBg.on("pointerdown", () => {
+      this.doJump();
+      this.jumpBtn?.setAlpha(1);
+    });
+    jumpBg.on("pointerup", () => this.jumpBtn?.setAlpha(0.7));
+    jumpBg.on("pointerout", () => this.jumpBtn?.setAlpha(0.7));
+
+    // Dash button - right side
+    const dashBg = this.add.rectangle(0, 0, btnW, btnH, 0x2d5e8e, 0.5)
+      .setStrokeStyle(2, 0x88ccff, 0.7);
+    const dashLabel = this.add.text(0, 0, "DASH", {
+      fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#ffffff",
+    }).setOrigin(0.5);
+    this.dashBtn = this.add.container(GAME_WIDTH - btnW / 2 - pad, y, [dashBg, dashLabel])
+      .setScrollFactor(0).setDepth(200).setAlpha(0.7);
+    dashBg.setInteractive();
+    dashBg.on("pointerdown", () => {
+      this.doDash();
+      this.dashBtn?.setAlpha(1);
+    });
+    dashBg.on("pointerup", () => this.dashBtn?.setAlpha(0.7));
+    dashBg.on("pointerout", () => this.dashBtn?.setAlpha(0.7));
   }
 
   private doJump() {
@@ -428,7 +480,7 @@ export class GameScene extends Phaser.Scene {
     let dashLabel: string;
     let dashColor: string;
     if (this.dashesUsed === 0) {
-      dashLabel = "DOWN = DASH";
+      dashLabel = this.isMobile ? "TAP DASH" : "DOWN = DASH";
       dashColor = "#88ccff";
     } else {
       dashLabel = this.player.isDashReady() ? "DASH READY" : "DASH COOLING";

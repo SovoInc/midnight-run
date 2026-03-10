@@ -21,6 +21,7 @@ export class MenuScene extends Phaser.Scene {
   private caretTimer?: Phaser.Time.TimerEvent;
   private caretVisible = true;
   private bats: MenuBat[] = [];
+  private hiddenInput?: HTMLInputElement;
 
   constructor() {
     super("MenuScene");
@@ -96,7 +97,7 @@ export class MenuScene extends Phaser.Scene {
       color: "#8866aa",
     }).setOrigin(0.5).setDepth(5);
 
-    this.aliasHintText = this.add.text(cx, 338, "TYPE TO ENTER ALIAS\nBACKSPACE TO DELETE", {
+    this.aliasHintText = this.add.text(cx, 338, "TAP BOX TO TYPE ALIAS", {
       fontFamily: '"Press Start 2P"',
       fontSize: "8px",
       color: "#88ccff",
@@ -108,7 +109,38 @@ export class MenuScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x7b2d8e)
       .setInteractive({ useHandCursor: true })
       .setDepth(5);
-    this.aliasBox.on("pointerdown", () => this.pulseAliasBox());
+    this.aliasBox.on("pointerdown", () => {
+      this.pulseAliasBox();
+      this.focusHiddenInput();
+    });
+
+    // Hidden DOM input to trigger mobile keyboard
+    this.hiddenInput = document.createElement("input");
+    this.hiddenInput.type = "text";
+    this.hiddenInput.maxLength = 20;
+    this.hiddenInput.autocapitalize = "off";
+    this.hiddenInput.autocomplete = "off";
+    this.hiddenInput.setAttribute("autocorrect", "off");
+    Object.assign(this.hiddenInput.style, {
+      position: "fixed",
+      left: "0",
+      top: "0",
+      width: "1px",
+      height: "1px",
+      opacity: "0",
+      zIndex: "-1",
+      border: "none",
+      outline: "none",
+      background: "transparent",
+      caretColor: "transparent",
+      fontSize: "16px", // prevents iOS zoom on focus
+    });
+    document.body.appendChild(this.hiddenInput);
+    this.hiddenInput.value = this.aliasValue;
+    this.hiddenInput.addEventListener("input", () => this.syncFromHiddenInput());
+    this.hiddenInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this.startGame();
+    });
 
     this.aliasText = this.add.text(cx, 305, "", {
       fontFamily: '"Press Start 2P"',
@@ -202,6 +234,7 @@ export class MenuScene extends Phaser.Scene {
 
     if (event.key === "Backspace") {
       this.aliasValue = this.aliasValue.slice(0, -1);
+      if (this.hiddenInput) this.hiddenInput.value = this.aliasValue;
       this.errorText.setText("");
       this.refreshAliasText();
       return;
@@ -209,6 +242,7 @@ export class MenuScene extends Phaser.Scene {
 
     if (event.key.length === 1 && this.aliasValue.length < 20 && /^[a-zA-Z0-9 _-]$/.test(event.key)) {
       this.aliasValue += event.key;
+      if (this.hiddenInput) this.hiddenInput.value = this.aliasValue;
       this.errorText.setText("");
       this.refreshAliasText();
     }
@@ -222,9 +256,25 @@ export class MenuScene extends Phaser.Scene {
     this.aliasText.setColor(hasAlias ? "#c850c0" : "#6666aa");
   }
 
+  private focusHiddenInput() {
+    if (this.hiddenInput) {
+      this.hiddenInput.value = this.aliasValue;
+      this.hiddenInput.focus();
+    }
+  }
+
+  private syncFromHiddenInput() {
+    if (!this.hiddenInput) return;
+    const raw = this.hiddenInput.value.replace(/[^a-zA-Z0-9 _-]/g, "").slice(0, 20);
+    this.hiddenInput.value = raw;
+    this.aliasValue = raw;
+    this.errorText.setText("");
+    this.refreshAliasText();
+  }
+
   private pulseAliasBox() {
     this.aliasBox.setStrokeStyle(2, 0xc850c0);
-    this.aliasHintText.setText("TYPE TO ENTER ALIAS\nPRESS ENTER TO START");
+    this.aliasHintText.setText("TAP HERE TO TYPE\nTHEN TAP RUN");
     this.time.delayedCall(180, () => {
       this.aliasBox.setStrokeStyle(2, 0x7b2d8e);
     });
@@ -242,6 +292,7 @@ export class MenuScene extends Phaser.Scene {
     }
 
     try {
+      this.hiddenInput?.blur();
       const player = await api.registerAlias(alias);
       localStorage.setItem("mr_player", JSON.stringify(player));
       this.cleanup();
@@ -260,6 +311,10 @@ export class MenuScene extends Phaser.Scene {
     if (this.caretTimer) {
       this.caretTimer.remove(false);
       this.caretTimer = undefined;
+    }
+    if (this.hiddenInput) {
+      this.hiddenInput.remove();
+      this.hiddenInput = undefined;
     }
   }
 
