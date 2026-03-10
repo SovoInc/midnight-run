@@ -17,36 +17,37 @@ export class BootScene extends Phaser.Scene {
     });
     this.load.on("complete", () => { bar.destroy(); fill.destroy(); });
 
+    const base = import.meta.env.BASE_URL;
     const fw = FRAME_WIDTH;
     const fh = FRAME_HEIGHT;
 
-    this.load.spritesheet("player-idle", "src/assets/player/idle.png", { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-run", "src/assets/player/run.png", { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-jump", "src/assets/player/jump.png", { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-midair", "src/assets/player/midair.png", { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-fall", "src/assets/player/fall.png", { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-dash", "src/assets/player/dash.png", { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-hit", "src/assets/player/hit.png", { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-death", "src/assets/player/death.png", { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-idle", `${base}assets/player/idle.png`, { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-run", `${base}assets/player/run.png`, { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-jump", `${base}assets/player/jump.png`, { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-midair", `${base}assets/player/midair.png`, { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-fall", `${base}assets/player/fall.png`, { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-dash", `${base}assets/player/dash.png`, { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-hit", `${base}assets/player/hit.png`, { frameWidth: fw, frameHeight: fh });
+    this.load.spritesheet("player-death", `${base}assets/player/death.png`, { frameWidth: fw, frameHeight: fh });
 
-    this.load.image("bg-back", "src/assets/backgrounds/bg-back.png");
-    this.load.image("bg-mid", "src/assets/backgrounds/bg-mid.png");
-    this.load.image("bg-front", "src/assets/backgrounds/bg-front.png");
-    this.load.spritesheet("bat-sky", "src/assets/backgrounds/bat-fly.png", {
+    this.load.image("bg-back", `${base}assets/backgrounds/bg-back.png`);
+    this.load.image("bg-mid", `${base}assets/backgrounds/bg-mid.png`);
+    this.load.image("bg-front", `${base}assets/backgrounds/bg-front.png`);
+    this.load.spritesheet("bat-sky", `${base}assets/backgrounds/bat-fly.png`, {
       frameWidth: 32, frameHeight: 32,
     });
 
-    this.load.spritesheet("dungeon-tiles", "src/assets/environment/dungeon-tiles.png", {
+    this.load.spritesheet("dungeon-tiles", `${base}assets/environment/dungeon-tiles.png`, {
       frameWidth: 16, frameHeight: 16,
     });
-    this.load.spritesheet("lava", "src/assets/environment/lava.png", { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet("saw", "src/assets/environment/saw.png", { frameWidth: 64, frameHeight: 64 });
-    this.load.spritesheet("fire-trap", "src/assets/environment/fire-trap.png", { frameWidth: 32, frameHeight: 64 });
-    this.load.spritesheet("lightning", "src/assets/environment/lightning.png", { frameWidth: 96, frameHeight: 96 });
-    this.load.spritesheet("toxic", "src/assets/environment/toxic.png", { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet("lava", `${base}assets/environment/lava.png`, { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet("saw", `${base}assets/environment/saw.png`, { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet("fire-trap", `${base}assets/environment/fire-trap.png`, { frameWidth: 32, frameHeight: 64 });
+    this.load.spritesheet("lightning", `${base}assets/environment/lightning.png`, { frameWidth: 96, frameHeight: 96 });
+    this.load.spritesheet("toxic", `${base}assets/environment/toxic.png`, { frameWidth: 64, frameHeight: 64 });
 
-    this.load.audio("music", "src/assets/backgrounds/music.ogg");
-    this.load.image("heart", "src/assets/ui/heart.png");
+    this.load.audio("music", `${base}assets/backgrounds/music.ogg`);
+    this.load.image("heart", `${base}assets/ui/heart.png`);
   }
 
   create() {
