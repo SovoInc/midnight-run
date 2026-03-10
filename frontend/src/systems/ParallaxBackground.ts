@@ -53,7 +53,7 @@ export function drawMoon(scene: Phaser.Scene, mx: number, my: number, depth: num
   maria.fillCircle(mx + 11, my - 10, 1.2);
 
   // Clip maria to moon circle
-  const moonMask = scene.make.graphics({ x: 0, y: 0, add: false });
+  const moonMask = scene.add.graphics().setVisible(false);
   moonMask.fillCircle(mx, my, r);
   maria.setMask(moonMask.createGeometryMask());
 }
