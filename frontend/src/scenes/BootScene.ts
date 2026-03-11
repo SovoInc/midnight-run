@@ -10,10 +10,9 @@ export class BootScene extends Phaser.Scene {
     const cx = this.cameras.main.centerX;
     const cy = this.cameras.main.centerY;
     const bar = this.add.rectangle(cx, cy, 300, 20, 0x1a1a2e).setStrokeStyle(2, 0x7b2d8e);
-    const fill = this.add.rectangle(cx - 148, cy, 4, 16, 0xc850c0);
+    const fill = this.add.rectangle(cx - 148, cy, 0, 16, 0xc850c0).setOrigin(0, 0.5);
     this.load.on("progress", (v: number) => {
       fill.width = 296 * v;
-      fill.x = cx - 148 + fill.width / 2;
     });
     this.load.on("complete", () => { bar.destroy(); fill.destroy(); });
 
