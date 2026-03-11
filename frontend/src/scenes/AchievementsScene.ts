@@ -65,6 +65,11 @@ export class AchievementsScene extends Phaser.Scene {
 
     const stk = { stroke: "#000000", strokeThickness: 3 };
 
+    // Also count locally-completed achievements
+    for (const def of DEFINITIONS) {
+      const prog = def.progress(progress);
+      if (prog.current >= prog.target) unlocked.add(def.key);
+    }
     const countText = `${unlocked.size} / ${DEFINITIONS.length}`;
     this.add.text(cx, 46, countText, {
       fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#aa88cc", ...stk,
@@ -80,7 +85,9 @@ export class AchievementsScene extends Phaser.Scene {
 
     DEFINITIONS.forEach((def, i) => {
       const y = 82 + i * rowHeight;
-      const isUnlocked = unlocked.has(def.key);
+      const prog = def.progress(progress);
+      const ratio = Math.min(prog.current / prog.target, 1);
+      const isUnlocked = unlocked.has(def.key) || ratio >= 1;
 
       this.add.rectangle(cx, y + 6, GAME_WIDTH - 30, rowHeight - 2, isUnlocked ? 0x1a1a2e : 0x0f0f1a, 0.7)
         .setOrigin(0.5);
@@ -96,9 +103,6 @@ export class AchievementsScene extends Phaser.Scene {
       this.add.text(46, y - 4, def.name, {
         fontFamily: '"Press Start 2P"', fontSize: "9px", color: nameColor, ...stk,
       }).setOrigin(0, 0.5);
-
-      const prog = def.progress(progress);
-      const ratio = Math.min(prog.current / prog.target, 1);
 
       if (isUnlocked) {
         this.add.text(46, y + 12, "Completed", {
