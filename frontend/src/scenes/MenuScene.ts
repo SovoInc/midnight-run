@@ -32,7 +32,7 @@ export class MenuScene extends Phaser.Scene {
 
     const bg1 = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, "bg-back").setOrigin(0).setScale(GAME_HEIGHT / 192);
     const bg2 = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, "bg-mid").setOrigin(0).setScale(GAME_HEIGHT / 192);
-    bg2.setAlpha(0.7);
+    bg2.setAlpha(1);
 
     this.tweens.add({ targets: bg1, tilePositionX: 50, duration: 20000, repeat: -1, yoyo: true });
     this.tweens.add({ targets: bg2, tilePositionX: 100, duration: 15000, repeat: -1, yoyo: true });
@@ -60,7 +60,7 @@ export class MenuScene extends Phaser.Scene {
         .setScale(cfg.scale)
         .setFlipX(cfg.speedX > 0)
         .setAlpha(0.65)
-        .setDepth(1);
+        .setDepth(4);
       sprite.play("anim-bat-sky");
       this.bats.push({
         sprite,
@@ -250,7 +250,7 @@ export class MenuScene extends Phaser.Scene {
 
   private refreshAliasText() {
     const hasAlias = this.aliasValue.length > 0;
-    const caret = this.caretVisible ? "_" : "";
+    const caret = this.caretVisible ? "_" : " ";
     const display = hasAlias ? this.aliasValue + caret : "alias" + caret;
     this.aliasText.setText(display);
     this.aliasText.setColor(hasAlias ? "#c850c0" : "#6666aa");
