@@ -232,6 +232,12 @@ export class MenuScene extends Phaser.Scene {
       return;
     }
 
+    // If the hidden input is focused, let syncFromHiddenInput handle character input
+    // to avoid doubling keystrokes on desktop
+    if (this.hiddenInput && document.activeElement === this.hiddenInput) {
+      return;
+    }
+
     if (event.key === "Backspace") {
       this.aliasValue = this.aliasValue.slice(0, -1);
       if (this.hiddenInput) this.hiddenInput.value = this.aliasValue;
