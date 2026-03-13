@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FRAME_WIDTH, FRAME_HEIGHT } from "../config";
+import { CHARACTERS, getUniqueSheets, PlayerState } from "../systems/CharacterRegistry";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -17,17 +17,18 @@ export class BootScene extends Phaser.Scene {
     this.load.on("complete", () => { bar.destroy(); fill.destroy(); });
 
     const base = import.meta.env.BASE_URL;
-    const fw = FRAME_WIDTH;
-    const fh = FRAME_HEIGHT;
 
-    this.load.spritesheet("player-idle", `${base}assets/player/idle.png`, { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-run", `${base}assets/player/run.png`, { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-jump", `${base}assets/player/jump.png`, { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-midair", `${base}assets/player/midair.png`, { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-fall", `${base}assets/player/fall.png`, { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-dash", `${base}assets/player/dash.png`, { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-hit", `${base}assets/player/hit.png`, { frameWidth: fw, frameHeight: fh });
-    this.load.spritesheet("player-death", `${base}assets/player/death.png`, { frameWidth: fw, frameHeight: fh });
+    // Load all character spritesheets
+    for (const char of CHARACTERS) {
+      const sheets = getUniqueSheets(char);
+      for (const sheet of sheets) {
+        const key = `${char.id}-${sheet}`;
+        this.load.spritesheet(key, `${base}assets/player/${char.folder}/${sheet}.png`, {
+          frameWidth: char.frameWidth,
+          frameHeight: char.frameHeight,
+        });
+      }
+    }
 
     this.load.image("bg-back", `${base}assets/backgrounds/bg-back.png`);
     this.load.image("bg-mid", `${base}assets/backgrounds/bg-mid.png`);
@@ -50,15 +51,25 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    this.anims.create({ key: "anim-idle", frames: this.anims.generateFrameNumbers("player-idle", { start: 0, end: 11 }), frameRate: 10, repeat: -1 });
-    this.anims.create({ key: "anim-run", frames: this.anims.generateFrameNumbers("player-run", { start: 0, end: 7 }), frameRate: 12, repeat: -1 });
-    this.anims.create({ key: "anim-jump", frames: this.anims.generateFrameNumbers("player-jump", { start: 0, end: 3 }), frameRate: 10, repeat: 0 });
-    this.anims.create({ key: "anim-midair", frames: this.anims.generateFrameNumbers("player-midair", { start: 0, end: 0 }), frameRate: 1, repeat: -1 });
-    this.anims.create({ key: "anim-fall", frames: this.anims.generateFrameNumbers("player-fall", { start: 0, end: 3 }), frameRate: 10, repeat: 0 });
-    this.anims.create({ key: "anim-dash", frames: this.anims.generateFrameNumbers("player-dash", { start: 0, end: 3 }), frameRate: 16, repeat: 0 });
-    this.anims.create({ key: "anim-hit", frames: this.anims.generateFrameNumbers("player-hit", { start: 0, end: 0 }), frameRate: 1, repeat: 0 });
-    this.anims.create({ key: "anim-death", frames: this.anims.generateFrameNumbers("player-death", { start: 0, end: 9 }), frameRate: 8, repeat: 0 });
+    // Create animations for all characters
+    const states: PlayerState[] = ["idle", "run", "jump", "midair", "fall", "dash", "hit", "dead"];
+    for (const char of CHARACTERS) {
+      for (const state of states) {
+        const anim = char.anims[state];
+        const key = `${char.id}-anim-${state}`;
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(`${char.id}-${anim.sheet}`, {
+            start: anim.start,
+            end: anim.end,
+          }),
+          frameRate: anim.rate,
+          repeat: anim.repeat,
+        });
+      }
+    }
 
+    // Environment animations
     this.anims.create({ key: "anim-saw", frames: this.anims.generateFrameNumbers("saw", { start: 0, end: 15 }), frameRate: 12, repeat: -1 });
     this.anims.create({ key: "anim-fire", frames: this.anims.generateFrameNumbers("fire-trap", { start: 0, end: 8 }), frameRate: 10, repeat: -1 });
     this.anims.create({ key: "anim-lightning", frames: this.anims.generateFrameNumbers("lightning", { start: 0, end: 9 }), frameRate: 8, repeat: -1 });

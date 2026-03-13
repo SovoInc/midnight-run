@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
 import { api, PlayerData } from "../api";
 import { drawMoon } from "../systems/ParallaxBackground";
+import { getCharacter } from "../systems/CharacterRegistry";
+import { getSelected } from "../systems/CharacterStore";
 
 interface MenuBat {
   sprite: Phaser.GameObjects.Sprite;
@@ -88,8 +90,9 @@ export class MenuScene extends Phaser.Scene {
       yoyo: true,
     });
 
-    const player = this.add.sprite(cx, 230, "player-idle").setScale(1.5).setDepth(5);
-    player.play("anim-idle");
+    const selChar = getCharacter(getSelected());
+    const player = this.add.sprite(cx, 230, `${selChar.id}-${selChar.anims.idle.sheet}`).setScale(1.5).setDepth(5);
+    player.play(`${selChar.id}-anim-idle`);
 
     this.add.text(cx, 300, "Enter your alias", {
       fontFamily: '"Press Start 2P"',
@@ -302,7 +305,7 @@ export class MenuScene extends Phaser.Scene {
       const player = await api.registerAlias(alias);
       localStorage.setItem("mr_player", JSON.stringify(player));
       this.cleanup();
-      this.scene.start("GameScene", { player });
+      this.scene.start("CharacterSelectScene", { player });
     } catch (err) {
       this.errorText.setText("server error - try again");
       console.error(err);

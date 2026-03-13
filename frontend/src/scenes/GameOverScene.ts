@@ -1,9 +1,11 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
 import { api, PlayerData, RunData } from "../api";
+import { getCharacter } from "../systems/CharacterRegistry";
 
 interface GameOverData {
   player: PlayerData;
+  characterId: string;
   score: number;
   distance: number;
   orbsCollected: number;
@@ -35,8 +37,10 @@ export class GameOverScene extends Phaser.Scene {
     }
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12, 0.7).setOrigin(0);
 
-    const dead = this.add.sprite(cx, 80, "player-death").setScale(1.5);
-    dead.play("anim-death");
+    const charId = d.characterId || "default";
+    const charDef = getCharacter(charId);
+    const dead = this.add.sprite(cx, 80, `${charId}-${charDef.anims.dead.sheet}`).setScale(1.5);
+    dead.play(`${charId}-anim-dead`);
 
     this.add.text(cx, 140, "GAME OVER", {
       fontFamily: '"Press Start 2P"', fontSize: "20px", color: "#c850c0",
@@ -109,7 +113,7 @@ export class GameOverScene extends Phaser.Scene {
     retryBg.on("pointerover", () => retryBg.setFillStyle(0xc850c0));
     retryBg.on("pointerout", () => retryBg.setFillStyle(0x7b2d8e));
     retryBg.on("pointerdown", () => {
-      this.scene.start("GameScene", { player: d.player });
+      this.scene.start("GameScene", { player: d.player, characterId: d.characterId });
     });
 
     const lbBg = this.add.rectangle(cx + 70, retryY, 120, 30, 0x2a2a5e).setInteractive({ useHandCursor: true });
@@ -123,9 +127,20 @@ export class GameOverScene extends Phaser.Scene {
       this.scene.start("LeaderboardScene", { player: d.player });
     });
 
-    const achY = retryY + 38;
-    const achBg = this.add.rectangle(cx, achY, 200, 26, 0x2a2a3e).setInteractive({ useHandCursor: true });
-    this.add.text(cx, achY, "ACHIEVEMENTS", {
+    const row2Y = retryY + 38;
+    const charBg = this.add.rectangle(cx - 55, row2Y, 100, 26, 0x2a2a3e).setInteractive({ useHandCursor: true });
+    this.add.text(cx - 55, row2Y, "RUNNERS", {
+      fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#e878e0",
+    }).setOrigin(0.5);
+
+    charBg.on("pointerover", () => charBg.setFillStyle(0x4a4a5e));
+    charBg.on("pointerout", () => charBg.setFillStyle(0x2a2a3e));
+    charBg.on("pointerdown", () => {
+      this.scene.start("CharacterSelectScene", { player: d.player });
+    });
+
+    const achBg = this.add.rectangle(cx + 55, row2Y, 100, 26, 0x2a2a3e).setInteractive({ useHandCursor: true });
+    this.add.text(cx + 55, row2Y, "ACHIEVE", {
       fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#ffdd44",
     }).setOrigin(0.5);
 
@@ -140,7 +155,7 @@ export class GameOverScene extends Phaser.Scene {
     });
 
     this.input.keyboard!.once("keydown-SPACE", () => {
-      this.scene.start("GameScene", { player: d.player });
+      this.scene.start("GameScene", { player: d.player, characterId: d.characterId });
     });
   }
 }

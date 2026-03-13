@@ -2,11 +2,11 @@ import Phaser from "phaser";
 import {
   PLAYER_X, GROUND_Y, JUMP_VELOCITY, DOUBLE_JUMP_VELOCITY,
   DASH_DURATION, DASH_COOLDOWN, DOUBLE_JUMP_UNLOCK_DISTANCE,
-  GAME_HEIGHT, PLAYER_SCALE, PLAYER_BODY_W, PLAYER_BODY_H,
-  PLAYER_OFFSET_X, PLAYER_OFFSET_Y,
+  GAME_HEIGHT,
   COYOTE_TIME, HIT_STUN_DURATION, HIT_INVULN_DURATION, STARTING_HEALTH,
   HIT_BOUNCE_X, HIT_BOUNCE_Y,
 } from "../config";
+import { getCharacter, CharacterDef } from "../systems/CharacterRegistry";
 
 type PlayerState = "idle" | "run" | "jump" | "midair" | "fall" | "dash" | "hit" | "dead";
 
@@ -14,6 +14,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private currentState: PlayerState = "idle";
   private canDoubleJump = false;
   private hasDoubleJumped = false;
+  private jumpCount = 0;
   private isDashing = false;
   private dashTimer = 0;
   private dashCooldownTimer = 0;
@@ -22,15 +23,25 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private coyoteTimer = 0;
   private health = STARTING_HEALTH;
   public damageTaken = false;
+  public readonly charId: string;
+  private readonly charDef: CharacterDef;
 
-  constructor(scene: Phaser.Scene) {
-    super(scene, PLAYER_X, GROUND_Y - 60, "player-idle");
+  constructor(scene: Phaser.Scene, characterId = "default") {
+    const def = getCharacter(characterId);
+    // Spawn high enough that the body bottom is above the ground for any character.
+    // Body bottom relative to sprite center = (offsetY + bodyH - frameHeight/2) * scale
+    const bodyBottomFromCenter = (def.offsetY + def.bodyH - def.frameHeight / 2) * def.scale;
+    const spawnY = GROUND_Y - bodyBottomFromCenter - 20;
+    super(scene, PLAYER_X, spawnY, `${def.id}-${def.anims.idle.sheet}`);
+    this.charId = def.id;
+    this.charDef = def;
+
     scene.add.existing(this as Phaser.GameObjects.GameObject);
     scene.physics.add.existing(this as unknown as Phaser.GameObjects.GameObject);
 
-    this.setScale(PLAYER_SCALE);
-    this.setSize(PLAYER_BODY_W, PLAYER_BODY_H);
-    this.setOffset(PLAYER_OFFSET_X, PLAYER_OFFSET_Y);
+    this.setScale(def.scale);
+    this.setSize(def.bodyW, def.bodyH);
+    this.setOffset(def.offsetX, def.offsetY);
     this.setCollideWorldBounds(false);
     this.setDepth(10);
   }
@@ -39,17 +50,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.currentState === "dead") return;
     if (this.currentState === newState) return;
     this.currentState = newState;
-
-    switch (newState) {
-      case "idle": this.play("anim-idle"); break;
-      case "run": this.play("anim-run"); break;
-      case "jump": this.play("anim-jump"); break;
-      case "midair": this.play("anim-midair"); break;
-      case "fall": this.play("anim-fall"); break;
-      case "dash": this.play("anim-dash"); break;
-      case "hit": this.play("anim-hit"); break;
-      case "dead": this.play("anim-death"); break;
-    }
+    this.play(`${this.charId}-anim-${newState}`);
   }
 
   getState(): PlayerState {
@@ -57,7 +58,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   startRun() {
-    this.health = STARTING_HEALTH;
+    this.health = this.charDef.perk === "extra_hp" ? STARTING_HEALTH + 1 : STARTING_HEALTH;
     this.damageTaken = false;
     this.isInvulnerable = false;
     this.invulnTimer = 0;
@@ -65,6 +66,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.coyoteTimer = 0;
     this.hasDoubleJumped = false;
     this.canDoubleJump = false;
+    this.jumpCount = 0;
     this.isDashing = false;
     this.setAlpha(1);
     this.setVelocity(0, 0);
@@ -78,16 +80,20 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const onGround = (this.body as Phaser.Physics.Arcade.Body).blocked.down;
     const canGroundJump = onGround || this.coyoteTimer > 0;
 
+    const maxAirJumps = this.charDef.perk === "triple_jump" ? 2 : 1;
+
     if (canGroundJump) {
       this.setVelocityY(JUMP_VELOCITY);
       this.setPlayerState("jump");
       this.hasDoubleJumped = false;
+      this.jumpCount = 1;
       this.canDoubleJump = distance >= DOUBLE_JUMP_UNLOCK_DISTANCE;
       this.coyoteTimer = 0;
       return true;
-    } else if (this.canDoubleJump && !this.hasDoubleJumped) {
+    } else if (this.canDoubleJump && this.jumpCount < 1 + maxAirJumps) {
       this.setVelocityY(DOUBLE_JUMP_VELOCITY);
       this.setPlayerState("jump");
+      this.jumpCount++;
       this.hasDoubleJumped = true;
       return true;
     }
@@ -169,9 +175,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const body = this.body as Phaser.Physics.Arcade.Body;
     const onGround = body.blocked.down;
 
-    if (onGround) {
+    if (onGround && body.velocity.y >= 0) {
       this.coyoteTimer = COYOTE_TIME;
       this.hasDoubleJumped = false;
+      this.jumpCount = 0;
     } else if (this.coyoteTimer > 0) {
       this.coyoteTimer -= delta;
     }
