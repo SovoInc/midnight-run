@@ -26,36 +26,22 @@ export function drawMoon(scene: Phaser.Scene, mx: number, my: number, depth: num
   const r = 22;
   scene.add.circle(mx, my, r, 0xfff8e7, 1).setScrollFactor(0).setDepth(depth + 1);
 
-  // Lunar maria
-  const maria = scene.add.graphics().setScrollFactor(0).setDepth(depth + 2);
-  maria.fillStyle(0xd6ceaa, 0.45);
-  maria.fillEllipse(mx - 5, my - 4, 18, 16);
-  maria.fillStyle(0xd6ceaa, 0.38);
-  maria.fillEllipse(mx + 8, my - 6, 11, 10);
-  maria.fillStyle(0xd0c8a0, 0.40);
-  maria.fillEllipse(mx + 10, my + 2, 12, 9);
-  maria.fillStyle(0xccc4a0, 0.35);
-  maria.fillEllipse(mx + 14, my - 2, 7, 6);
-  maria.fillStyle(0xd4cca6, 0.32);
-  maria.fillEllipse(mx - 4, my + 8, 14, 10);
-  maria.fillStyle(0xd0c8a0, 0.30);
-  maria.fillEllipse(mx + 6, my + 9, 9, 7);
-  maria.fillStyle(0xd8d0ae, 0.28);
-  maria.fillEllipse(mx - 12, my + 2, 10, 18);
+  // Logo mark — three squares vertically centered, starting from center going up
+  const logo = scene.add.graphics().setScrollFactor(0).setDepth(depth + 2);
+  const sq = 4;
+  const gap = 9;
+  logo.fillStyle(0xc8c0a8, 0.5);
+  logo.lineStyle(1, 0xb8b098, 0.6);
+  for (let i = 0; i < 3; i++) {
+    const sy = my - i * gap;
+    logo.fillRect(mx - sq / 2, sy - sq / 2, sq, sq);
+    logo.strokeRect(mx - sq / 2, sy - sq / 2, sq, sq);
+  }
 
-  // Small craters
-  maria.fillStyle(0xc8c098, 0.30);
-  maria.fillCircle(mx - 8, my + 14, 2.5);
-  maria.fillCircle(mx + 3, my - 12, 2);
-  maria.fillCircle(mx + 15, my + 8, 1.5);
-  maria.fillStyle(0xffffff, 0.15);
-  maria.fillCircle(mx - 1, my + 12, 1.8);
-  maria.fillCircle(mx + 11, my - 10, 1.2);
-
-  // Clip maria to moon circle
+  // Clip logo to moon circle
   const moonMask = scene.add.graphics().setVisible(false);
   moonMask.fillCircle(mx, my, r);
-  maria.setMask(moonMask.createGeometryMask());
+  logo.setMask(moonMask.createGeometryMask());
 }
 
 export class ParallaxBackground {

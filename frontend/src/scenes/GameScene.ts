@@ -13,6 +13,8 @@ import { ParallaxBackground } from "../systems/ParallaxBackground";
 import { DifficultyManager, ObstacleType } from "../systems/DifficultyManager";
 import { AchievementManager, RunStats, loadProgress, saveProgress, updateProgress } from "../systems/AchievementManager";
 import { sfx } from "../systems/SfxManager";
+import { addOrbs } from "../systems/CharacterStore";
+import { getCharacter } from "../systems/CharacterRegistry";
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -24,6 +26,13 @@ export class GameScene extends Phaser.Scene {
   private achievements!: AchievementManager;
 
   private playerData!: PlayerData;
+  private characterId = "default";
+  private activeBoosts: string[] = [];
+  private magnetActive = false;
+  private magnetTimer = 0;
+  private speedBoostActive = false;
+  private speedBoostText!: Phaser.GameObjects.Text;
+  private magnetText!: Phaser.GameObjects.Text;
   private distance = 0;
   private score = 0;
   private orbsCollected = 0;
@@ -34,6 +43,8 @@ export class GameScene extends Phaser.Scene {
   private spawnTimer = 0;
   private shieldActive = false;
   private shieldSpawned = false;
+  private magnetSpawned = false;
+  private lastPowerupDistance = 0;
   private runCount = 0;
   private isDead = false;
 
@@ -63,13 +74,18 @@ export class GameScene extends Phaser.Scene {
   private isMobile = false;
   private jumpBtn?: Phaser.GameObjects.Container;
   private dashBtn?: Phaser.GameObjects.Container;
+  private paused = false;
+  private pauseOverlay?: Phaser.GameObjects.Container;
+  private escKey!: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super("GameScene");
   }
 
-  init(data: { player: PlayerData }) {
+  init(data: { player: PlayerData; characterId?: string; activeBoosts?: string[] }) {
     this.playerData = data.player;
+    this.characterId = data.characterId || "default";
+    this.activeBoosts = data.activeBoosts || [];
   }
 
   create() {
@@ -80,8 +96,11 @@ export class GameScene extends Phaser.Scene {
     this.dashesUsed = 0;
     this.wallsBroken = 0;
     this.spawnTimer = 1700;
-    this.shieldActive = false;
+    const charDef = getCharacter(this.characterId);
+    this.shieldActive = charDef.perk === "starter_shield";
     this.shieldSpawned = false;
+    this.magnetSpawned = false;
+    this.lastPowerupDistance = 0;
     this.isDead = false;
     this.doubleJumpHintShown = false;
     this.dashHintShown = false;
@@ -95,13 +114,17 @@ export class GameScene extends Phaser.Scene {
     this.platforms = new PlatformManager(this);
     this.obstacles = new ObstacleFactory(this);
     this.collectibles = new CollectibleManager(this);
+    this.speedBoostActive = this.activeBoosts.includes("speed_boost");
+    this.magnetActive = this.activeBoosts.includes("orb_magnet");
+    this.magnetTimer = this.magnetActive ? 60000 : 0;
+
     this.difficulty = new DifficultyManager();
-    this.difficulty.reset(useMercy);
+    this.difficulty.reset(useMercy, this.speedBoostActive);
 
     this.achievements = new AchievementManager();
     this.achievements.init(this.playerData.id);
 
-    this.player = new Player(this);
+    this.player = new Player(this, this.characterId);
     this.player.startRun();
 
     this.physics.add.collider(
@@ -118,7 +141,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.player as unknown as Phaser.Physics.Arcade.Sprite,
       this.collectibles.group,
-      (_, orb) => { this.collectOrb(orb as Phaser.GameObjects.Arc); },
+      (_, orb) => { this.collectOrb(orb as Phaser.GameObjects.Arc | Phaser.GameObjects.Polygon | Phaser.GameObjects.Star); },
     );
 
     this.jumpKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -162,6 +185,22 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 2,
     }).setOrigin(0).setScrollFactor(0).setDepth(100);
 
+    this.speedBoostText = this.add.text(GAME_WIDTH - 10, 44, "", {
+      ...hudStyle,
+      fontSize: "8px",
+      color: "#00e5ff",
+      stroke: "#003344",
+      strokeThickness: 2,
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.magnetText = this.add.text(GAME_WIDTH - 10, 58, "", {
+      ...hudStyle,
+      fontSize: "8px",
+      color: "#ff44ff",
+      stroke: "#330033",
+      strokeThickness: 2,
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
     this.toastText = this.add.text(GAME_WIDTH / 2, 60, "", {
       fontFamily: '"Press Start 2P"', fontSize: "9px", color: "#ffdd44",
       stroke: "#000000", strokeThickness: 3,
@@ -170,7 +209,8 @@ export class GameScene extends Phaser.Scene {
     this.nearMissFlash = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xc850c0, 0)
       .setOrigin(0).setScrollFactor(0).setDepth(99);
 
-    for (let i = 0; i < 3; i++) {
+    const maxHp = getCharacter(this.characterId).perk === "extra_hp" ? 4 : 3;
+    for (let i = 0; i < maxHp; i++) {
       const heart = this.add.image(18 + i * 22, 50, "heart")
         .setOrigin(0, 0.5)
         .setScale(0.8)
@@ -193,6 +233,18 @@ export class GameScene extends Phaser.Scene {
       repeat: -1,
     });
 
+    // Pause button
+    this.paused = false;
+    this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    const pauseBtn = this.add.text(GAME_WIDTH - 12, GAME_HEIGHT - 16, "II", {
+      fontFamily: '"Press Start 2P"', fontSize: "12px", color: "#ffffff",
+      stroke: "#000000", strokeThickness: 3,
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(200).setAlpha(0.5)
+      .setInteractive({ useHandCursor: true });
+    pauseBtn.on("pointerover", () => pauseBtn.setAlpha(1));
+    pauseBtn.on("pointerout", () => pauseBtn.setAlpha(0.5));
+    pauseBtn.on("pointerdown", () => this.togglePause());
+
     this.updateHearts();
     this.updateShieldVisuals();
     if (this.isMobile) {
@@ -212,7 +264,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    if (this.isDead) return;
+    if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
+      this.togglePause();
+    }
+    if (this.paused || this.isDead) return;
 
     if (this.player.hasFallenOffScreen()) {
       this.die();
@@ -239,6 +294,31 @@ export class GameScene extends Phaser.Scene {
     this.obstacles.update(speed);
     this.collectibles.update(speed, delta);
 
+    // Orb magnet effect
+    if (this.magnetActive && this.magnetTimer > 0) {
+      this.magnetTimer -= delta;
+      if (this.magnetTimer <= 0) {
+        this.magnetActive = false;
+        this.magnetTimer = 0;
+      } else {
+        for (const child of this.collectibles.group.getChildren()) {
+          if (!(child instanceof Phaser.GameObjects.Arc)) continue;
+          const orb = child as Phaser.GameObjects.Arc;
+          const dx = this.player.x - orb.x;
+          const dy = this.player.y - orb.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 200 && dist > 0) {
+            const body = orb.body as Phaser.Physics.Arcade.Body;
+            const strength = 1600 * (1 - dist / 200);
+            body.setVelocity(
+              body.velocity.x + (dx / dist) * strength * (delta / 1000),
+              body.velocity.y + (dy / dist) * strength * (delta / 1000),
+            );
+          }
+        }
+      }
+    }
+
     this.spawnTimer -= delta;
     if (this.spawnTimer <= 0) {
       const screenTravelInterval = (GAME_WIDTH / speed) * 1000;
@@ -246,9 +326,18 @@ export class GameScene extends Phaser.Scene {
       this.spawnEncounter(speed);
     }
 
-    if (!this.shieldSpawned && this.distance > 500 && Math.random() < 0.001) {
+    const powerupClearance = this.distance - this.lastPowerupDistance > 600;
+
+    if (!this.shieldSpawned && this.distance > 500 && powerupClearance && Math.random() < 0.001) {
       this.collectibles.spawnShield(speed);
       this.shieldSpawned = true;
+      this.lastPowerupDistance = this.distance;
+    }
+
+    if (!this.magnetSpawned && !this.magnetActive && this.distance > 800 && powerupClearance && Math.random() < 0.0008) {
+      this.collectibles.spawnMagnet(speed);
+      this.magnetSpawned = true;
+      this.lastPowerupDistance = this.distance;
     }
 
     this.checkNearMisses();
@@ -256,6 +345,67 @@ export class GameScene extends Phaser.Scene {
     this.updateHUD();
     this.showProgressHints();
     this.updateToast(delta);
+  }
+
+  private togglePause() {
+    if (this.isDead) return;
+    if (this.paused) {
+      this.paused = false;
+      this.physics.resume();
+      this.tweens.resumeAll();
+      if (this.pauseOverlay) {
+        this.pauseOverlay.destroy();
+        this.pauseOverlay = undefined;
+      }
+    } else {
+      this.paused = true;
+      this.physics.pause();
+      this.tweens.pauseAll();
+      this.showPauseOverlay();
+    }
+  }
+
+  private showPauseOverlay() {
+    const cx = GAME_WIDTH / 2;
+    const cy = GAME_HEIGHT / 2;
+    this.pauseOverlay = this.add.container(0, 0).setScrollFactor(0).setDepth(300);
+
+    const dimBg = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12, 0.7).setOrigin(0);
+    this.pauseOverlay.add(dimBg);
+
+    const title = this.add.text(cx, cy - 50, "PAUSED", {
+      fontFamily: '"Press Start 2P"', fontSize: "18px", color: "#c850c0",
+      stroke: "#7b2d8e", strokeThickness: 3,
+    }).setOrigin(0.5);
+    this.pauseOverlay.add(title);
+
+    // Resume button
+    const resumeBg = this.add.rectangle(cx, cy + 10, 160, 34, 0x7b2d8e)
+      .setInteractive({ useHandCursor: true });
+    const resumeLabel = this.add.text(cx, cy + 10, "RESUME", {
+      fontFamily: '"Press Start 2P"', fontSize: "11px", color: "#ffffff",
+    }).setOrigin(0.5);
+    resumeBg.on("pointerover", () => resumeBg.setFillStyle(0xc850c0));
+    resumeBg.on("pointerout", () => resumeBg.setFillStyle(0x7b2d8e));
+    resumeBg.on("pointerdown", () => this.togglePause());
+    this.pauseOverlay.add(resumeBg);
+    this.pauseOverlay.add(resumeLabel);
+
+    // Quit button
+    const quitBg = this.add.rectangle(cx, cy + 55, 120, 26, 0x2a2a3e)
+      .setInteractive({ useHandCursor: true });
+    const quitLabel = this.add.text(cx, cy + 55, "QUIT", {
+      fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#aaaacc",
+    }).setOrigin(0.5);
+    quitBg.on("pointerover", () => quitBg.setFillStyle(0x4a4a5e));
+    quitBg.on("pointerout", () => quitBg.setFillStyle(0x2a2a3e));
+    quitBg.on("pointerdown", () => {
+      this.physics.resume();
+      this.tweens.resumeAll();
+      this.scene.start("MenuScene");
+    });
+    this.pauseOverlay.add(quitBg);
+    this.pauseOverlay.add(quitLabel);
   }
 
   private cleanupInputs() {
@@ -358,7 +508,15 @@ export class GameScene extends Phaser.Scene {
     this.showToast(`${hit.remainingHealth} HP LEFT`);
   }
 
-  private collectOrb(orb: Phaser.GameObjects.Arc | Phaser.GameObjects.Polygon) {
+  private collectOrb(orb: Phaser.GameObjects.Arc | Phaser.GameObjects.Polygon | Phaser.GameObjects.Star) {
+    if (orb.getData("isMagnet")) {
+      this.magnetActive = true;
+      this.magnetTimer = 15000;
+      sfx.shield();
+      this.showToast("MAGNET PICKUP!");
+      orb.destroy();
+      return;
+    }
     const isShield = orb instanceof Phaser.GameObjects.Polygon;
     if (isShield) {
       this.shieldActive = true;
@@ -459,13 +617,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateScore() {
-    this.score = Math.floor(this.distance)
+    this.score = Math.floor(this.distance * 0.04)
       + this.orbsCollected * ORB_SCORE_VALUE
       + this.nearMisses * NEAR_MISS_BONUS;
   }
 
   private updateHUD() {
-    const dist = Math.floor(this.distance) + "m";
+    const dist = Math.floor(this.distance * 0.04) + "m";
     if (dist !== this.lastDistText) { this.distText.setText(dist); this.lastDistText = dist; }
 
     const sc = String(this.score);
@@ -488,6 +646,23 @@ export class GameScene extends Phaser.Scene {
     }
     if (dashLabel !== this.lastDashText) { this.dashText.setText(dashLabel); this.lastDashText = dashLabel; }
     if (dashColor !== this.lastDashColor) { this.dashText.setColor(dashColor); this.lastDashColor = dashColor; }
+
+    // Boost HUD indicators
+    const boostRemaining = this.difficulty.getSpeedBoostRemaining();
+    if (boostRemaining > 0) {
+      const secs = Math.ceil(boostRemaining / 1000);
+      this.speedBoostText.setText(`SPEED+ 0:${String(secs).padStart(2, "0")}`).setAlpha(1);
+    } else if (this.speedBoostActive) {
+      this.speedBoostActive = false;
+      this.tweens.add({ targets: this.speedBoostText, alpha: 0, duration: 500 });
+    }
+
+    if (this.magnetActive && this.magnetTimer > 0) {
+      const secs = Math.ceil(this.magnetTimer / 1000);
+      this.magnetText.setText(`MAGNET 0:${String(secs).padStart(2, "0")}`).setAlpha(1);
+    } else if (this.magnetText.alpha > 0 && !this.magnetActive) {
+      this.tweens.add({ targets: this.magnetText, alpha: 0, duration: 500 });
+    }
   }
 
   private updateHearts() {
@@ -543,8 +718,9 @@ export class GameScene extends Phaser.Scene {
     this.collectibles.stopAll();
 
     const duration = (this.time.now - this.startTime) / 1000;
+    const displayDistance = Math.floor(this.distance * 0.04);
     const runStats: RunStats = {
-      distance: Math.floor(this.distance),
+      distance: displayDistance,
       orbsCollected: this.orbsCollected,
       nearMisses: this.nearMisses,
       dashesUsed: this.dashesUsed,
@@ -556,6 +732,7 @@ export class GameScene extends Phaser.Scene {
 
     const prev = loadProgress();
     saveProgress(updateProgress(prev, runStats));
+    addOrbs(this.orbsCollected);
 
     const newAchievements = await this.achievements.checkAll(runStats);
 
@@ -568,8 +745,9 @@ export class GameScene extends Phaser.Scene {
         this.textures.addImage("gameover-snapshot", image as HTMLImageElement);
         this.scene.start("GameOverScene", {
           player: this.playerData,
+          characterId: this.characterId,
           score: this.score,
-          distance: Math.floor(this.distance),
+          distance: displayDistance,
           orbsCollected: this.orbsCollected,
           nearMisses: this.nearMisses,
           dashesUsed: this.dashesUsed,

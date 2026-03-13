@@ -78,6 +78,85 @@ export class CollectibleManager {
     });
   }
 
+  spawnMagnet(_speed: number) {
+    const x = GAME_WIDTH + 30;
+    const y = GROUND_Y - 90;
+
+    // Outer glow ring
+    const glow = this.scene.add.circle(x, y, 20, 0x2288ff, 0.0)
+      .setStrokeStyle(3, 0x44aaff, 0.4);
+    this.scene.tweens.add({
+      targets: glow,
+      scaleX: { from: 0.6, to: 1.6 },
+      scaleY: { from: 0.6, to: 1.6 },
+      alpha: { from: 0.6, to: 0 },
+      duration: 900,
+      repeat: -1,
+    });
+
+    // Inner glow
+    const innerGlow = this.scene.add.circle(x, y, 12, 0x44aaff, 0.15);
+    this.scene.tweens.add({
+      targets: innerGlow,
+      scaleX: { from: 0.8, to: 1.3 },
+      scaleY: { from: 0.8, to: 1.3 },
+      alpha: { from: 0.25, to: 0.05 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    // Core star
+    const magnet = this.scene.add.star(x, y, 4, 5, 13, 0x3399ff, 0.9);
+    magnet.setStrokeStyle(2, 0x88ccff);
+    magnet.setData("isMagnet", true);
+    magnet.setData("_glow", glow);
+    magnet.setData("_innerGlow", innerGlow);
+    this.scene.physics.add.existing(magnet);
+    (magnet.body as Phaser.Physics.Arcade.Body).allowGravity = false;
+    (magnet.body as Phaser.Physics.Arcade.Body).setCircle(14, -14, -14);
+    this.group.add(magnet);
+
+    // Spin
+    this.scene.tweens.add({
+      targets: magnet,
+      angle: 360,
+      duration: 1800,
+      repeat: -1,
+    });
+
+    // Pulse
+    this.scene.tweens.add({
+      targets: magnet,
+      scaleX: { from: 0.85, to: 1.25 },
+      scaleY: { from: 0.85, to: 1.25 },
+      duration: 500,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    // Bob up and down
+    this.scene.tweens.add({
+      targets: [magnet, glow, innerGlow],
+      y: { from: y - 6, to: y + 6 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    // Keep glow rings following the star
+    this.scene.events.on("update", () => {
+      if (!magnet.active) {
+        glow.destroy();
+        innerGlow.destroy();
+        return;
+      }
+      glow.setPosition(magnet.x, magnet.y);
+      innerGlow.setPosition(magnet.x, magnet.y);
+    });
+  }
+
   spawnShield(_speed: number) {
     const x = GAME_WIDTH + 30;
     const y = GROUND_Y - 60;
