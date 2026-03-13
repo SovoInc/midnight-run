@@ -16,11 +16,13 @@ export class DifficultyManager {
   private mercyTimer = 0;
   private mercyActive = false;
   private reachedMaxSpeed = false;
+  private boostTimer = 0;
 
-  reset(useMercy: boolean) {
+  reset(useMercy: boolean, speedBoost = false) {
     this.distance = 0;
     this.orbsCollected = 0;
     this.reachedMaxSpeed = false;
+    this.boostTimer = speedBoost ? 30000 : 0;
     if (useMercy) {
       this.mercyActive = true;
       this.mercyTimer = MERCY_DURATION;
@@ -34,10 +36,19 @@ export class DifficultyManager {
       this.mercyTimer -= delta;
       if (this.mercyTimer <= 0) this.mercyActive = false;
     }
+    if (this.boostTimer > 0) {
+      this.boostTimer -= delta;
+      if (this.boostTimer < 0) this.boostTimer = 0;
+    }
+  }
+
+  getSpeedBoostRemaining(): number {
+    return this.boostTimer;
   }
 
   getSpeed(): number {
-    const raw = BASE_SPEED + SPEED_GAIN * Math.log(1 + this.orbsCollected / 4);
+    const boost = this.boostTimer > 0 ? 80 * (this.boostTimer / 30000) : 0;
+    const raw = BASE_SPEED + boost + SPEED_GAIN * Math.log(1 + this.orbsCollected / 4);
     const speed = Math.min(raw, MAX_SPEED);
     if (speed >= MAX_SPEED - 1) this.reachedMaxSpeed = true;
     return speed;
