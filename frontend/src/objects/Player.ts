@@ -22,6 +22,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private invulnTimer = 0;
   private coyoteTimer = 0;
   private health = STARTING_HEALTH;
+  private maxHealth = STARTING_HEALTH;
   public damageTaken = false;
   public readonly charId: string;
   private readonly charDef: CharacterDef;
@@ -58,7 +59,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   startRun() {
-    this.health = this.charDef.perk === "extra_hp" ? STARTING_HEALTH + 1 : STARTING_HEALTH;
+    this.maxHealth = this.charDef.perk === "extra_hp" ? STARTING_HEALTH + 1 : STARTING_HEALTH;
+    this.health = this.maxHealth;
     this.damageTaken = false;
     this.isInvulnerable = false;
     this.invulnTimer = 0;
@@ -159,6 +161,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   getHealth(): number {
     return this.health;
+  }
+
+  heal(): boolean {
+    if (this.health >= this.maxHealth) return false;
+    this.health++;
+    return true;
   }
 
   didDoubleJump(): boolean {

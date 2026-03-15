@@ -4,10 +4,17 @@ import { GAME_WIDTH, GROUND_Y } from "../config";
 export class CollectibleManager {
   private scene: Phaser.Scene;
   public group: Phaser.Physics.Arcade.Group;
+  private orbColor = 0xc850c0;
+  private orbStroke = 0xe878e0;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.group = scene.physics.add.group({ allowGravity: false });
+  }
+
+  setOrbStyle(color: number, stroke: number) {
+    this.orbColor = color;
+    this.orbStroke = stroke;
   }
 
   update(speed: number, delta: number) {
@@ -60,8 +67,8 @@ export class CollectibleManager {
   }
 
   private spawnOrbAt(x: number, y: number) {
-    const orb = this.scene.add.circle(x, y, 7, 0xc850c0, 0.9);
-    orb.setStrokeStyle(2, 0xe878e0);
+    const orb = this.scene.add.circle(x, y, 7, this.orbColor, 0.9);
+    orb.setStrokeStyle(2, this.orbStroke);
     this.scene.physics.add.existing(orb);
     (orb.body as Phaser.Physics.Arcade.Body).allowGravity = false;
     (orb.body as Phaser.Physics.Arcade.Body).setCircle(7);

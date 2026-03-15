@@ -12,6 +12,7 @@ export class PlatformManager {
   private columns: { x: number; sprites: Phaser.GameObjects.Sprite[]; body: Phaser.GameObjects.Rectangle | null }[] = [];
   private nextX = 0;
   private gapCountdown = 0;
+  private currentTint = 0xffffff;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -33,6 +34,7 @@ export class PlatformManager {
         .setOrigin(0, 0)
         .setScale(TILE_SCALE)
         .setDepth(-5);
+      if (this.currentTint !== 0xffffff) tile.setTint(this.currentTint);
       sprites.push(tile);
     }
 
@@ -92,6 +94,16 @@ export class PlatformManager {
         this.addColumn(this.nextX);
       }
       this.nextX += SCALED_TILE;
+    }
+  }
+
+  setTint(tint: number) {
+    if (tint === this.currentTint) return;
+    this.currentTint = tint;
+    for (const col of this.columns) {
+      for (const s of col.sprites) {
+        s.setTint(tint);
+      }
     }
   }
 

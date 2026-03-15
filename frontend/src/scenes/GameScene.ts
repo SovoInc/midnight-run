@@ -3,6 +3,7 @@ import {
   GAME_WIDTH, GAME_HEIGHT, GROUND_Y,
   NEAR_MISS_THRESHOLD, NEAR_MISS_BONUS, ORB_SCORE_VALUE,
   DISTANCE_SCORE_MULTIPLIER, DOUBLE_JUMP_UNLOCK_DISTANCE,
+  MILESTONE_SCORE_BONUS,
 } from "../config";
 import { PlayerData } from "../api";
 import { Player } from "../objects/Player";
@@ -13,6 +14,7 @@ import { ParallaxBackground } from "../systems/ParallaxBackground";
 import { DifficultyManager, ObstacleType } from "../systems/DifficultyManager";
 import { AchievementManager, RunStats, loadProgress, saveProgress, updateProgress } from "../systems/AchievementManager";
 import { sfx } from "../systems/SfxManager";
+import { ZoneManager } from "../systems/ZoneManager";
 import { addOrbs } from "../systems/CharacterStore";
 import { getCharacter } from "../systems/CharacterRegistry";
 
@@ -24,6 +26,8 @@ export class GameScene extends Phaser.Scene {
   private parallax!: ParallaxBackground;
   private difficulty!: DifficultyManager;
   private achievements!: AchievementManager;
+  private zoneManager!: ZoneManager;
+  private milestoneFlash!: Phaser.GameObjects.Rectangle;
 
   private playerData!: PlayerData;
   private characterId = "default";
@@ -36,6 +40,7 @@ export class GameScene extends Phaser.Scene {
   private distance = 0;
   private score = 0;
   private orbsCollected = 0;
+  private orbsRaw = 0;
   private nearMisses = 0;
   private dashesUsed = 0;
   private wallsBroken = 0;
@@ -47,6 +52,10 @@ export class GameScene extends Phaser.Scene {
   private lastPowerupDistance = 0;
   private runCount = 0;
   private isDead = false;
+  private hasShieldPerk = false;
+  private shieldRegenTimer = 0;
+  private hasExtraHpPerk = false;
+  private orbsSinceHeal = 0;
 
   private distText!: Phaser.GameObjects.Text;
   private scoreText!: Phaser.GameObjects.Text;
@@ -92,12 +101,17 @@ export class GameScene extends Phaser.Scene {
     this.distance = 0;
     this.score = 0;
     this.orbsCollected = 0;
+    this.orbsRaw = 0;
     this.nearMisses = 0;
     this.dashesUsed = 0;
     this.wallsBroken = 0;
     this.spawnTimer = 1700;
     const charDef = getCharacter(this.characterId);
-    this.shieldActive = charDef.perk === "starter_shield";
+    this.hasShieldPerk = charDef.perk === "starter_shield";
+    this.shieldActive = this.hasShieldPerk;
+    this.shieldRegenTimer = 0;
+    this.hasExtraHpPerk = charDef.perk === "extra_hp";
+    this.orbsSinceHeal = 0;
     this.shieldSpawned = false;
     this.magnetSpawned = false;
     this.lastPowerupDistance = 0;
@@ -120,6 +134,7 @@ export class GameScene extends Phaser.Scene {
 
     this.difficulty = new DifficultyManager();
     this.difficulty.reset(useMercy, this.speedBoostActive);
+    this.zoneManager = new ZoneManager();
 
     this.achievements = new AchievementManager();
     this.achievements.init(this.playerData.id);
@@ -165,41 +180,42 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanupInputs());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanupInputs());
 
+    const hudBottom = GAME_HEIGHT - 10;
     const hudStyle = { fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#c850c0" };
-    this.distText = this.add.text(GAME_WIDTH - 10, 10, "0m", hudStyle)
-      .setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.scoreText = this.add.text(GAME_WIDTH - 10, 26, "0", { ...hudStyle, color: "#ffffff" })
-      .setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.orbText = this.add.text(10, 10, "0 orbs", { ...hudStyle, color: "#e878e0" })
-      .setOrigin(0).setScrollFactor(0).setDepth(100);
-    this.dashText = this.add.text(10, 28, "DOWN = DASH", {
+    this.distText = this.add.text(GAME_WIDTH - 10, hudBottom, "0m", hudStyle)
+      .setOrigin(1, 1).setScrollFactor(0).setDepth(100);
+    this.scoreText = this.add.text(GAME_WIDTH - 10, hudBottom - 16, "0", { ...hudStyle, color: "#ffffff" })
+      .setOrigin(1, 1).setScrollFactor(0).setDepth(100);
+    this.orbText = this.add.text(10, hudBottom, "0 orbs", { ...hudStyle, color: "#e878e0" })
+      .setOrigin(0, 1).setScrollFactor(0).setDepth(100);
+    this.dashText = this.add.text(10, hudBottom - 16, "DOWN = ATTACK", {
       ...hudStyle,
       fontSize: "8px",
       color: "#88ccff",
-    }).setOrigin(0).setScrollFactor(0).setDepth(100);
-    this.shieldText = this.add.text(10, 66, "", {
+    }).setOrigin(0, 1).setScrollFactor(0).setDepth(100);
+    this.shieldText = this.add.text(10, hudBottom - 32, "", {
       ...hudStyle,
       fontSize: "8px",
       color: "#66d9ff",
       stroke: "#0a2240",
       strokeThickness: 2,
-    }).setOrigin(0).setScrollFactor(0).setDepth(100);
+    }).setOrigin(0, 1).setScrollFactor(0).setDepth(100);
 
-    this.speedBoostText = this.add.text(GAME_WIDTH - 10, 44, "", {
+    this.speedBoostText = this.add.text(GAME_WIDTH - 10, hudBottom - 32, "", {
       ...hudStyle,
       fontSize: "8px",
       color: "#00e5ff",
       stroke: "#003344",
       strokeThickness: 2,
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(100);
 
-    this.magnetText = this.add.text(GAME_WIDTH - 10, 58, "", {
+    this.magnetText = this.add.text(GAME_WIDTH - 10, hudBottom - 46, "", {
       ...hudStyle,
       fontSize: "8px",
       color: "#ff44ff",
       stroke: "#330033",
       strokeThickness: 2,
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(100);
 
     this.toastText = this.add.text(GAME_WIDTH / 2, 60, "", {
       fontFamily: '"Press Start 2P"', fontSize: "9px", color: "#ffdd44",
@@ -208,10 +224,12 @@ export class GameScene extends Phaser.Scene {
 
     this.nearMissFlash = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xc850c0, 0)
       .setOrigin(0).setScrollFactor(0).setDepth(99);
+    this.milestoneFlash = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xffffff, 0)
+      .setOrigin(0).setScrollFactor(0).setDepth(98);
 
     const maxHp = getCharacter(this.characterId).perk === "extra_hp" ? 4 : 3;
     for (let i = 0; i < maxHp; i++) {
-      const heart = this.add.image(18 + i * 22, 50, "heart")
+      const heart = this.add.image(18 + i * 22, hudBottom - 46, "heart")
         .setOrigin(0, 0.5)
         .setScale(0.8)
         .setScrollFactor(0)
@@ -236,10 +254,10 @@ export class GameScene extends Phaser.Scene {
     // Pause button
     this.paused = false;
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    const pauseBtn = this.add.text(GAME_WIDTH - 12, GAME_HEIGHT - 16, "II", {
+    const pauseBtn = this.add.text(GAME_WIDTH - 12, 14, "II", {
       fontFamily: '"Press Start 2P"', fontSize: "12px", color: "#ffffff",
       stroke: "#000000", strokeThickness: 3,
-    }).setOrigin(1, 1).setScrollFactor(0).setDepth(200).setAlpha(0.5)
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(200).setAlpha(0.5)
       .setInteractive({ useHandCursor: true });
     pauseBtn.on("pointerover", () => pauseBtn.setAlpha(1));
     pauseBtn.on("pointerout", () => pauseBtn.setAlpha(0.5));
@@ -248,10 +266,10 @@ export class GameScene extends Phaser.Scene {
     this.updateHearts();
     this.updateShieldVisuals();
     if (this.isMobile) {
-      this.time.delayedCall(600, () => this.showToast("TAP JUMP & DASH"));
+      this.time.delayedCall(600, () => this.showToast("TAP JUMP & ATTACK"));
     } else {
       this.time.delayedCall(600, () => this.showToast("SPACE / UP TO JUMP"));
-      this.time.delayedCall(2400, () => this.showToast("DOWN TO DASH"));
+      this.time.delayedCall(2400, () => this.showToast("DOWN TO ATTACK"));
     }
 
     if (!this.registry.get("musicPlaying")) {
@@ -280,6 +298,24 @@ export class GameScene extends Phaser.Scene {
     const speed = this.difficulty.getSpeed();
     this.distance += speed * (delta / 1000) * DISTANCE_SCORE_MULTIPLIER;
 
+    // Zone progression
+    this.zoneManager.update(this.distance);
+    const palette = this.zoneManager.getBlendedPalette();
+    this.parallax.applyZonePalette(palette);
+    this.platforms.setTint(palette.platformTint);
+    this.collectibles.setOrbStyle(palette.orbColor, palette.orbStroke);
+
+    const zoneName = this.zoneManager.checkZoneEnter();
+    if (zoneName) {
+      this.showToast("ENTERING: " + zoneName);
+      sfx.zoneEnter();
+    }
+
+    const milestone = this.zoneManager.checkMilestones(this.distance);
+    if (milestone) {
+      this.celebrateMilestone(milestone);
+    }
+
     if (Phaser.Input.Keyboard.JustDown(this.jumpKey) || Phaser.Input.Keyboard.JustDown(this.upKey)) {
       this.doJump();
     }
@@ -289,6 +325,18 @@ export class GameScene extends Phaser.Scene {
 
     this.player.updatePlayer(delta);
     this.updateShieldVisuals();
+
+    // Shield regen for ninja perk
+    if (this.shieldRegenTimer > 0) {
+      this.shieldRegenTimer -= delta;
+      if (this.shieldRegenTimer <= 0) {
+        this.shieldRegenTimer = 0;
+        this.shieldActive = true;
+        this.updateHearts();
+        sfx.shield();
+        this.showToast("SHIELD REGENERATED!");
+      }
+    }
     this.parallax.update(speed, delta);
     this.platforms.update(speed, delta);
     this.obstacles.update(speed);
@@ -440,7 +488,7 @@ export class GameScene extends Phaser.Scene {
     // Dash button - right side
     const dashBg = this.add.rectangle(0, 0, btnW, btnH, 0x2d5e8e, 0.5)
       .setStrokeStyle(2, 0x88ccff, 0.7);
-    const dashLabel = this.add.text(0, 0, "DASH", {
+    const dashLabel = this.add.text(0, 0, "ATTACK", {
       fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#ffffff",
     }).setOrigin(0.5);
     this.dashBtn = this.add.container(GAME_WIDTH - btnW / 2 - pad, y, [dashBg, dashLabel])
@@ -484,6 +532,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.shieldActive) {
       this.shieldActive = false;
+      if (this.hasShieldPerk) this.shieldRegenTimer = 30000;
       obs.destroy();
       sfx.shield();
       this.updateHearts();
@@ -523,10 +572,45 @@ export class GameScene extends Phaser.Scene {
       sfx.shield();
       this.showToast("SHIELD ACTIVE!");
     } else {
-      this.orbsCollected++;
+      const mult = this.zoneManager.getOrbMultiplier();
+      this.orbsRaw += mult;
+      this.orbsCollected = Math.floor(this.orbsRaw);
       sfx.orb();
+      this.showFloatingOrbText(orb.x, orb.y, mult);
+
+      if (this.hasExtraHpPerk) {
+        this.orbsSinceHeal++;
+        if (this.orbsSinceHeal >= 100) {
+          this.orbsSinceHeal = 0;
+          if (this.player.heal()) {
+            this.updateHearts();
+            sfx.shield();
+            this.showToast("HP RESTORED!");
+          }
+        }
+      }
     }
     orb.destroy();
+  }
+
+  private showFloatingOrbText(x: number, y: number, amount: number) {
+    const label = "+" + amount;
+    const txt = this.add.text(x, y, label, {
+      fontFamily: '"Press Start 2P"',
+      fontSize: amount > 1 ? "10px" : "8px",
+      color: amount > 1 ? "#ffdd44" : "#e878e0",
+      stroke: "#000000",
+      strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(100);
+
+    this.tweens.add({
+      targets: txt,
+      y: y - 40,
+      alpha: { from: 1, to: 0 },
+      duration: 600,
+      ease: "Power2",
+      onComplete: () => txt.destroy(),
+    });
   }
 
   private spawnEncounter(speed: number) {
@@ -638,10 +722,10 @@ export class GameScene extends Phaser.Scene {
     let dashLabel: string;
     let dashColor: string;
     if (this.dashesUsed === 0) {
-      dashLabel = this.isMobile ? "TAP DASH" : "DOWN = DASH";
+      dashLabel = this.isMobile ? "TAP ATTACK" : "DOWN = ATTACK";
       dashColor = "#88ccff";
     } else {
-      dashLabel = this.player.isDashReady() ? "DASH READY" : "DASH COOLING";
+      dashLabel = this.player.isDashReady() ? "ATTACK READY" : "ATTACK COOLING";
       dashColor = this.player.isDashReady() ? "#88ccff" : "#557799";
     }
     if (dashLabel !== this.lastDashText) { this.dashText.setText(dashLabel); this.lastDashText = dashLabel; }
@@ -688,8 +772,23 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.dashHintShown && this.distance >= 700) {
       this.dashHintShown = true;
-      this.showToast("DASH THROUGH WALLS");
+      this.showToast("ATTACK THROUGH WALLS");
     }
+  }
+
+  private celebrateMilestone(displayMeters: number) {
+    this.score += MILESTONE_SCORE_BONUS;
+    sfx.milestone();
+    this.showToast(displayMeters + "m");
+
+    // Screen flash
+    this.milestoneFlash.setAlpha(0.15);
+    this.tweens.killTweensOf(this.milestoneFlash);
+    this.tweens.add({
+      targets: this.milestoneFlash,
+      alpha: 0,
+      duration: 400,
+    });
   }
 
   private showToast(msg: string) {

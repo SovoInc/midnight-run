@@ -97,4 +97,16 @@ export const sfx = {
     playTone(520, 0.06, "triangle", 0.08, 780);
     setTimeout(() => playTone(680, 0.08, "triangle", 0.06), 40);
   },
+
+  milestone() {
+    playTone(440, 0.12, "sine", 0.1);
+    setTimeout(() => playTone(660, 0.12, "sine", 0.08), 100);
+    setTimeout(() => playTone(880, 0.15, "sine", 0.07), 200);
+  },
+
+  zoneEnter() {
+    playTone(220, 0.3, "sine", 0.08, 330);
+    setTimeout(() => playTone(330, 0.3, "sine", 0.07, 440), 150);
+    setTimeout(() => playTone(440, 0.3, "sine", 0.06, 660), 300);
+  },
 };

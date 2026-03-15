@@ -69,7 +69,7 @@ export const CHARACTERS: CharacterDef[] = [
     cost: 500,
     mystery: false,
     perk: "starter_shield",
-    perkLabel: "START SHIELD",
+    perkLabel: "REGEN SHIELD",
     anims: {
       idle:   { sheet: "idle",  start: 0, end: 9,  rate: 10, repeat: -1 },
       run:    { sheet: "run",   start: 0, end: 7,  rate: 12, repeat: -1 },
@@ -121,7 +121,7 @@ export const CHARACTERS: CharacterDef[] = [
     cost: 5000,
     mystery: true,
     perk: "extra_hp",
-    perkLabel: "4 HP",
+    perkLabel: "4 HP + REGEN",
     anims: {
       idle:   { sheet: "idle",  start: 0, end: 10, rate: 10, repeat: -1 },
       run:    { sheet: "run",   start: 0, end: 7,  rate: 12, repeat: -1 },

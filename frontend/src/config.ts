@@ -32,7 +32,7 @@ export const GAME_HEIGHT = viewport.height;
 export const TILE_SIZE = 16;
 export const TILE_SCALE = 2;
 export const SCALED_TILE = TILE_SIZE * TILE_SCALE;
-export const GROUND_ROWS = 3;
+export const GROUND_ROWS = Math.ceil((GAME_HEIGHT - Math.round(GAME_HEIGHT * 0.82)) / (TILE_SIZE * TILE_SCALE)) + 1;
 
 export const PLAYER_X = Math.round(Math.max(72, GAME_WIDTH * 0.16));
 export const GROUND_Y = Math.round(GAME_HEIGHT * 0.82);
@@ -77,3 +77,7 @@ export const PLAYER_BODY_W = 14;
 export const PLAYER_BODY_H = 34;
 export const PLAYER_OFFSET_X = 111;
 export const PLAYER_OFFSET_Y = 44;
+
+export const ZONE_BLEND_DISTANCE = 12500;
+export const MILESTONE_INTERVAL = 6250;
+export const MILESTONE_SCORE_BONUS = 100;
