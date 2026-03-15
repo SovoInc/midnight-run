@@ -15,23 +15,29 @@ export class LeaderboardScene extends Phaser.Scene {
 
   async create() {
     const cx = GAME_WIDTH / 2;
+    const cy = GAME_HEIGHT / 2;
 
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12).setOrigin(0);
 
-    this.add.text(cx, 25, "LEADERBOARD", {
+    // 20 entries * 16px = 320px; total content ~380px; center that block
+    const contentTop = cy - 195;
+
+    this.add.text(cx, contentTop, "LEADERBOARD", {
       fontFamily: '"Press Start 2P"', fontSize: "16px", color: "#c850c0",
       stroke: "#7b2d8e", strokeThickness: 3,
     }).setOrigin(0.5);
 
-    this.add.text(cx, 55, "RANK     PLAYER          SCORE    DIST", {
+    this.add.text(cx, contentTop + 30, "RANK     PLAYER          SCORE    DIST", {
       fontFamily: '"Press Start 2P"', fontSize: "7px", color: "#6666aa",
     }).setOrigin(0.5);
+
+    const entriesTop = contentTop + 50;
 
     try {
       const scores = await api.getTopScores(20);
 
       scores.forEach((entry, i) => {
-        const y = 75 + i * 16;
+        const y = entriesTop + i * 16;
         const isMe = entry.player_id === this.playerData.id;
         const color = isMe ? "#c850c0" : "#aaaacc";
         const bg = isMe ? 0x1a1a3e : undefined;
@@ -51,18 +57,19 @@ export class LeaderboardScene extends Phaser.Scene {
       });
 
       if (scores.length === 0) {
-        this.add.text(cx, 150, "No scores yet. Be the first!", {
+        this.add.text(cx, cy, "No scores yet. Be the first!", {
           fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#6666aa",
         }).setOrigin(0.5);
       }
     } catch {
-      this.add.text(cx, 150, "Could not load scores", {
+      this.add.text(cx, cy, "Could not load scores", {
         fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#ff4444",
       }).setOrigin(0.5);
     }
 
-    const backBg = this.add.rectangle(cx, 420, 140, 30, 0x7b2d8e).setInteractive({ useHandCursor: true });
-    this.add.text(cx, 420, "BACK", {
+    const backY = cy + 195;
+    const backBg = this.add.rectangle(cx, backY, 140, 30, 0x7b2d8e).setInteractive({ useHandCursor: true });
+    this.add.text(cx, backY, "BACK", {
       fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#ffffff",
     }).setOrigin(0.5);
 

@@ -18,7 +18,6 @@ interface GameOverData {
 
 export class GameOverScene extends Phaser.Scene {
   private runResult!: GameOverData;
-
   constructor() {
     super("GameOverScene");
   }
@@ -29,6 +28,7 @@ export class GameOverScene extends Phaser.Scene {
 
   async create() {
     const cx = GAME_WIDTH / 2;
+    const cy = GAME_HEIGHT / 2;
     const d = this.runResult;
 
     // Show last frame of gameplay as background
@@ -39,19 +39,19 @@ export class GameOverScene extends Phaser.Scene {
 
     const charId = d.characterId || "default";
     const charDef = getCharacter(charId);
-    const dead = this.add.sprite(cx, 80, `${charId}-${charDef.anims.dead.sheet}`).setScale(1.5);
+    const dead = this.add.sprite(cx, cy - 150, `${charId}-${charDef.anims.dead.sheet}`).setScale(1.5);
     dead.play(`${charId}-anim-dead`);
 
-    this.add.text(cx, 140, "GAME OVER", {
+    this.add.text(cx, cy - 90, "GAME OVER", {
       fontFamily: '"Press Start 2P"', fontSize: "20px", color: "#c850c0",
       stroke: "#7b2d8e", strokeThickness: 3,
     }).setOrigin(0.5);
 
     const style = { fontFamily: '"Press Start 2P"', fontSize: "9px", color: "#aaaacc" };
 
-    this.add.text(cx, 175, `SCORE: ${d.score}`, { ...style, color: "#ffffff", fontSize: "14px" }).setOrigin(0.5);
-    this.add.text(cx, 200, `${d.distance}m  |  ${d.orbsCollected} orbs  |  ${d.nearMisses} near misses`, style).setOrigin(0.5);
-    this.add.text(cx, 218, `${d.dashesUsed} dashes  |  ${d.wallsBroken} walls  |  ${d.duration.toFixed(1)}s`, style).setOrigin(0.5);
+    this.add.text(cx, cy - 55, `SCORE: ${d.score}`, { ...style, color: "#ffffff", fontSize: "14px" }).setOrigin(0.5);
+    this.add.text(cx, cy - 30, `${d.distance}m  |  ${d.orbsCollected} orbs  |  ${d.nearMisses} near misses`, style).setOrigin(0.5);
+    this.add.text(cx, cy - 12, `${d.dashesUsed} dashes  |  ${d.wallsBroken} walls  |  ${d.duration.toFixed(1)}s`, style).setOrigin(0.5);
 
     // Submit score
     const runData: RunData = {
@@ -72,30 +72,32 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     // Show new achievements
+    let dynamicY = cy + 15;
     if (d.newAchievements.length > 0) {
-      this.add.text(cx, 245, "ACHIEVEMENTS UNLOCKED:", {
+      this.add.text(cx, dynamicY, "ACHIEVEMENTS UNLOCKED:", {
         fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#ffdd44",
       }).setOrigin(0.5);
+      dynamicY += 15;
 
       d.newAchievements.forEach((name, i) => {
-        this.add.text(cx, 260 + i * 14, `★ ${name}`, {
+        this.add.text(cx, dynamicY + i * 14, `★ ${name}`, {
           fontFamily: '"Press Start 2P"', fontSize: "7px", color: "#ffdd44",
         }).setOrigin(0.5);
       });
+      dynamicY += d.newAchievements.length * 14 + 15;
     }
 
     // Top scores
     try {
       const top = await api.getTopScores(5);
-      const startY = d.newAchievements.length > 0 ? 260 + d.newAchievements.length * 14 + 15 : 250;
 
-      this.add.text(cx, startY, "LEADERBOARD", {
+      this.add.text(cx, dynamicY, "LEADERBOARD", {
         fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#8866aa",
       }).setOrigin(0.5);
 
       top.forEach((entry, i) => {
         const color = entry.player_id === d.player.id ? "#c850c0" : "#6666aa";
-        this.add.text(cx, startY + 16 + i * 13, `${entry.rank}. ${entry.alias} - ${entry.score}`, {
+        this.add.text(cx, dynamicY + 16 + i * 13, `${entry.rank}. ${entry.alias} - ${entry.score}`, {
           fontFamily: '"Press Start 2P"', fontSize: "7px", color,
         }).setOrigin(0.5);
       });
@@ -104,7 +106,7 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     // Buttons
-    const retryY = 388;
+    const retryY = cy + 155;
     const retryBg = this.add.rectangle(cx - 70, retryY, 120, 30, 0x7b2d8e).setInteractive({ useHandCursor: true });
     this.add.text(cx - 70, retryY, "RETRY", {
       fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#ffffff",
@@ -129,7 +131,7 @@ export class GameOverScene extends Phaser.Scene {
 
     const row2Y = retryY + 38;
     const charBg = this.add.rectangle(cx - 55, row2Y, 100, 26, 0x2a2a3e).setInteractive({ useHandCursor: true });
-    this.add.text(cx - 55, row2Y, "RUNNERS", {
+    this.add.text(cx - 55, row2Y, "STORE", {
       fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#e878e0",
     }).setOrigin(0.5);
 
@@ -158,4 +160,5 @@ export class GameOverScene extends Phaser.Scene {
       this.scene.start("GameScene", { player: d.player, characterId: d.characterId });
     });
   }
+
 }

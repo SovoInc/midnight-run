@@ -56,13 +56,14 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.cards = [];
     this.selectedId = getSelected();
     const cx = GAME_WIDTH / 2;
+    const cy = GAME_HEIGHT / 2;
 
     // Background
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12).setOrigin(0);
 
     // Title
     this.add
-      .text(cx, 30, "CHOOSE YOUR RUNNER", {
+      .text(cx, cy - 185, "CHOOSE YOUR RUNNER", {
         fontFamily: '"Press Start 2P"',
         fontSize: "12px",
         color: "#c850c0",
@@ -73,7 +74,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     // Wallet
     this.walletText = this.add
-      .text(cx, 54, "", {
+      .text(cx, cy - 161, "", {
         fontFamily: '"Press Start 2P"',
         fontSize: "9px",
         color: "#e878e0",
@@ -88,7 +89,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     const gap = 12;
     const totalW = CHARACTERS.length * cardW + (CHARACTERS.length - 1) * gap;
     const startX = (GAME_WIDTH - totalW) / 2 + cardW / 2;
-    const cardY = 160;
+    const cardY = cy - 55;
 
     for (let i = 0; i < CHARACTERS.length; i++) {
       const char = CHARACTERS[i];
@@ -99,14 +100,14 @@ export class CharacterSelectScene extends Phaser.Scene {
     // Boost section
     this.activeBoosts.clear();
     this.boostButtons = [];
-    const boostLabelY = 260;
+    const boostLabelY = cy + 45;
     this.add.text(cx, boostLabelY, "RUN BOOSTS", {
       fontFamily: '"Press Start 2P"',
       fontSize: "7px",
       color: "#6a6a8e",
     }).setOrigin(0.5);
 
-    const boostY = 288;
+    const boostY = cy + 70;
     const boostGap = 160;
     const boostStartX = cx - (boostGap * (BOOST_DEFS.length - 1)) / 2;
 
@@ -117,7 +118,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     }
 
     // START button
-    const startBtnY = 345;
+    const startBtnY = cy + 135;
     const startBg = this.add
       .rectangle(cx, startBtnY, 160, 36, 0x7b2d8e)
       .setInteractive({ useHandCursor: true });
@@ -145,11 +146,12 @@ export class CharacterSelectScene extends Phaser.Scene {
     });
 
     // BACK button
+    const backY = cy + 170;
     const backBg = this.add
-      .rectangle(cx, 385, 120, 26, 0x2a2a3e)
+      .rectangle(cx, backY, 120, 26, 0x2a2a3e)
       .setInteractive({ useHandCursor: true });
     this.add
-      .text(cx, 385, "BACK", {
+      .text(cx, backY, "BACK", {
         fontFamily: '"Press Start 2P"',
         fontSize: "8px",
         color: "#aaaacc",
@@ -211,7 +213,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     // Name
     const displayName = isMystery ? "???" : char.name;
     const nameText = this.add
-      .text(0, 30, displayName, {
+      .text(0, 26, displayName, {
         fontFamily: '"Press Start 2P"',
         fontSize: "8px",
         color: "#ffffff",
@@ -230,7 +232,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     }
     const costColor = isUnlocked ? "#88ff88" : "#e878e0";
     const costText = this.add
-      .text(0, 48, isUnlocked && char.cost > 0 ? "OWNED" : costLabel, {
+      .text(0, 44, isUnlocked && char.cost > 0 ? "OWNED" : costLabel, {
         fontFamily: '"Press Start 2P"',
         fontSize: "7px",
         color: costColor,
@@ -242,7 +244,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     const perkText = isMystery ? "???" : char.perkLabel;
     if (perkText) {
       const perk = this.add
-        .text(0, 64, perkText, {
+        .text(0, 60, perkText, {
           fontFamily: '"Press Start 2P"',
           fontSize: "6px",
           color: "#88ccff",
@@ -253,7 +255,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     // Lock icon
     const lockIcon = this.add
-      .text(0, 78, isUnlocked ? "" : "UNLOCK", {
+      .text(0, 74, isUnlocked ? "" : "UNLOCK", {
         fontFamily: '"Press Start 2P"',
         fontSize: "7px",
         color: "#ffdd44",

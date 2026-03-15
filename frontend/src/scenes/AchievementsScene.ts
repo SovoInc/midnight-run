@@ -26,10 +26,14 @@ export class AchievementsScene extends Phaser.Scene {
 
   async create() {
     const cx = GAME_WIDTH / 2;
+    const cy = GAME_HEIGHT / 2;
 
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12).setOrigin(0);
 
-    this.add.text(cx, 25, "ACHIEVEMENTS", {
+    // Center content vertically: title + count + runs + rows + back
+    const contentTop = cy - 200;
+
+    this.add.text(cx, contentTop, "ACHIEVEMENTS", {
       fontFamily: '"Press Start 2P"', fontSize: "16px", color: "#ffdd44",
       stroke: "#7b2d8e", strokeThickness: 3,
     }).setOrigin(0.5);
@@ -71,20 +75,21 @@ export class AchievementsScene extends Phaser.Scene {
       if (prog.current >= prog.target) unlocked.add(def.key);
     }
     const countText = `${unlocked.size} / ${DEFINITIONS.length}`;
-    this.add.text(cx, 46, countText, {
+    this.add.text(cx, contentTop + 24, countText, {
       fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#aa88cc", ...stk,
     }).setOrigin(0.5);
 
-    this.add.text(cx, 62, `${progress.totalRuns} run${progress.totalRuns === 1 ? "" : "s"}`, {
+    this.add.text(cx, contentTop + 42, `${progress.totalRuns} run${progress.totalRuns === 1 ? "" : "s"}`, {
       fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#7766aa", ...stk,
     }).setOrigin(0.5);
 
     const rowHeight = 44;
     const barWidth = GAME_WIDTH - 80;
     const barLeft = 40;
+    const rowsTop = contentTop + 62;
 
     DEFINITIONS.forEach((def, i) => {
-      const y = 82 + i * rowHeight;
+      const y = rowsTop + i * rowHeight;
       const prog = def.progress(progress);
       const ratio = Math.min(prog.current / prog.target, 1);
       const isUnlocked = unlocked.has(def.key) || ratio >= 1;
@@ -136,7 +141,7 @@ export class AchievementsScene extends Phaser.Scene {
     });
 
     // Back button
-    const backY = Math.max(82 + DEFINITIONS.length * rowHeight + 16, 420);
+    const backY = Math.max(rowsTop + DEFINITIONS.length * rowHeight + 16, cy + 195);
     const backBg = this.add.rectangle(cx, backY, 140, 30, 0x7b2d8e).setInteractive({ useHandCursor: true });
     this.add.text(cx, backY, "BACK", {
       fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#ffffff", ...stk,

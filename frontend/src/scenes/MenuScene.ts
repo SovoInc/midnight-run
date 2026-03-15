@@ -32,8 +32,10 @@ export class MenuScene extends Phaser.Scene {
   create() {
     const cx = GAME_WIDTH / 2;
 
-    const bg1 = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, "bg-back").setOrigin(0).setScale(GAME_HEIGHT / 192);
-    const bg2 = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, "bg-mid").setOrigin(0).setScale(GAME_HEIGHT / 192);
+    const scaleY = GAME_HEIGHT / 192;
+    const tileW = Math.ceil(GAME_WIDTH / scaleY);
+    const bg1 = this.add.tileSprite(0, 0, tileW, 192, "bg-back").setOrigin(0).setScale(scaleY);
+    const bg2 = this.add.tileSprite(0, 0, tileW, 192, "bg-mid").setOrigin(0).setScale(scaleY);
     bg2.setAlpha(1);
 
     this.tweens.add({ targets: bg1, tilePositionX: 50, duration: 20000, repeat: -1, yoyo: true });
@@ -73,7 +75,9 @@ export class MenuScene extends Phaser.Scene {
       });
     }
 
-    const title = this.add.text(cx, 80, "MIDNIGHT RUN", {
+    const cy = GAME_HEIGHT / 2;
+
+    const title = this.add.text(cx, cy - 180, "MIDNIGHT RUN", {
       fontFamily: '"Press Start 2P"',
       fontSize: "32px",
       color: "#c850c0",
@@ -91,16 +95,16 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const selChar = getCharacter(getSelected());
-    const player = this.add.sprite(cx, 230, `${selChar.id}-${selChar.anims.idle.sheet}`).setScale(1.5).setDepth(5);
+    const player = this.add.sprite(cx, cy - 30, `${selChar.id}-${selChar.anims.idle.sheet}`).setScale(1.5).setDepth(5);
     player.play(`${selChar.id}-anim-idle`);
 
-    this.add.text(cx, 300, "Enter your alias", {
+    this.add.text(cx, cy + 40, "Enter your alias", {
       fontFamily: '"Press Start 2P"',
       fontSize: "10px",
       color: "#8866aa",
     }).setOrigin(0.5).setDepth(5);
 
-    this.aliasHintText = this.add.text(cx, 338, "TAP BOX TO TYPE ALIAS", {
+    this.aliasHintText = this.add.text(cx, cy + 78, "TAP BOX TO TYPE ALIAS", {
       fontFamily: '"Press Start 2P"',
       fontSize: "8px",
       color: "#88ccff",
@@ -108,7 +112,7 @@ export class MenuScene extends Phaser.Scene {
       lineSpacing: 8,
     }).setOrigin(0.5).setDepth(5);
 
-    this.aliasBox = this.add.rectangle(cx, 305, 240, 34, 0x1a1a2e)
+    this.aliasBox = this.add.rectangle(cx, cy + 45, 240, 34, 0x1a1a2e)
       .setStrokeStyle(2, 0x7b2d8e)
       .setInteractive({ useHandCursor: true })
       .setDepth(5);
@@ -145,21 +149,21 @@ export class MenuScene extends Phaser.Scene {
       if (e.key === "Enter") this.startGame();
     });
 
-    this.aliasText = this.add.text(cx, 305, "", {
+    this.aliasText = this.add.text(cx, cy + 45, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "10px",
       color: "#c850c0",
       align: "center",
     }).setOrigin(0.5).setDepth(5);
 
-    this.errorText = this.add.text(cx, 380, "", {
+    this.errorText = this.add.text(cx, cy + 120, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "8px",
       color: "#ff4444",
     }).setOrigin(0.5).setDepth(5);
 
-    const btnBg = this.add.rectangle(cx, 405, 160, 36, 0x7b2d8e).setInteractive({ useHandCursor: true }).setDepth(5);
-    this.add.text(cx, 405, "R U N", {
+    const btnBg = this.add.rectangle(cx, cy + 145, 160, 36, 0x7b2d8e).setInteractive({ useHandCursor: true }).setDepth(5);
+    this.add.text(cx, cy + 145, "R U N", {
       fontFamily: '"Press Start 2P"',
       fontSize: "14px",
       color: "#ffffff",
@@ -174,8 +178,8 @@ export class MenuScene extends Phaser.Scene {
       const data = JSON.parse(saved) as PlayerData;
       this.aliasValue = data.alias;
 
-      const achBg = this.add.rectangle(cx, 440, 180, 26, 0x2a2a3e).setInteractive({ useHandCursor: true }).setDepth(5);
-      this.add.text(cx, 440, "ACHIEVEMENTS", {
+      const achBg = this.add.rectangle(cx, cy + 180, 180, 26, 0x2a2a3e).setInteractive({ useHandCursor: true }).setDepth(5);
+      this.add.text(cx, cy + 180, "ACHIEVEMENTS", {
         fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#ffdd44",
       }).setOrigin(0.5).setDepth(5);
 
