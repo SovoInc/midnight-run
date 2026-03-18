@@ -1,9 +1,14 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
-import { api, PlayerData } from "../api";
+import { api, getPlayerIdentifier, PlayerData, shortenWalletAddress } from "../api";
 import { drawMoon } from "../systems/ParallaxBackground";
 import { getCharacter } from "../systems/CharacterRegistry";
 import { getSelected } from "../systems/CharacterStore";
+import {
+  connectMidnightWallet,
+  getMidnightWalletError,
+  MIDNIGHT_NETWORK_ID,
+} from "../midnight";
 
 interface MenuBat {
   sprite: Phaser.GameObjects.Sprite;
@@ -14,16 +19,25 @@ interface MenuBat {
 }
 
 export class MenuScene extends Phaser.Scene {
-  private aliasValue = "";
-  private aliasText!: Phaser.GameObjects.Text;
-  private aliasBox!: Phaser.GameObjects.Rectangle;
-  private errorText!: Phaser.GameObjects.Text;
-  private aliasHintText!: Phaser.GameObjects.Text;
-  private keyboardHandler?: (event: KeyboardEvent) => void;
-  private caretTimer?: Phaser.Time.TimerEvent;
-  private caretVisible = true;
   private bats: MenuBat[] = [];
-  private hiddenInput?: HTMLInputElement;
+  private playerData: PlayerData | null = null;
+  private statusText!: Phaser.GameObjects.Text;
+  private addressText!: Phaser.GameObjects.Text;
+  private hintText!: Phaser.GameObjects.Text;
+  private errorText!: Phaser.GameObjects.Text;
+  private connectBg!: Phaser.GameObjects.Rectangle;
+  private connectLabel!: Phaser.GameObjects.Text;
+  private runBg!: Phaser.GameObjects.Rectangle;
+  private runLabel!: Phaser.GameObjects.Text;
+  private achievementsBg!: Phaser.GameObjects.Rectangle;
+  private achievementsLabel!: Phaser.GameObjects.Text;
+  private scoresBg!: Phaser.GameObjects.Rectangle;
+  private scoresLabel!: Phaser.GameObjects.Text;
+  private logoutBg!: Phaser.GameObjects.Rectangle;
+  private logoutLabel!: Phaser.GameObjects.Text;
+  private isConnecting = false;
+  private hasAttemptedAutoConnect = false;
+  private isAutoConnecting = false;
 
   constructor() {
     super("MenuScene");
@@ -42,16 +56,13 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: bg2, tilePositionX: 100, duration: 15000, repeat: -1, yoyo: true });
 
     this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0a12, 0.6).setOrigin(0).setDepth(0);
-
-    // Moon (above overlay)
     drawMoon(this, GAME_WIDTH * 0.78, GAME_HEIGHT * 0.18, 1);
 
-    // Bats (above overlay)
     this.bats = [];
     const batConfigs = [
       { x: GAME_WIDTH * 0.10, y: GAME_HEIGHT * 0.12, scale: 0.85, speedX: -20 },
       { x: GAME_WIDTH * 0.30, y: GAME_HEIGHT * 0.24, scale: 0.70, speedX: 15 },
-      { x: GAME_WIDTH * 0.50, y: GAME_HEIGHT * 0.08, scale: 1.0,  speedX: -24 },
+      { x: GAME_WIDTH * 0.50, y: GAME_HEIGHT * 0.08, scale: 1.0, speedX: -24 },
       { x: GAME_WIDTH * 0.65, y: GAME_HEIGHT * 0.20, scale: 0.75, speedX: 17 },
       { x: GAME_WIDTH * 0.80, y: GAME_HEIGHT * 0.15, scale: 0.90, speedX: -22 },
       { x: GAME_WIDTH * 0.95, y: GAME_HEIGHT * 0.28, scale: 0.65, speedX: 13 },
@@ -76,8 +87,11 @@ export class MenuScene extends Phaser.Scene {
     }
 
     const cy = GAME_HEIGHT / 2;
+    const panelY = Math.min(cy + 30, GAME_HEIGHT - 210);
+    const titleY = Math.max(44, panelY - 150);
+    const heroY = panelY - 68;
 
-    const title = this.add.text(cx, cy - 180, "MIDNIGHT RUN", {
+    const title = this.add.text(cx, titleY, "MIDNIGHT RUN", {
       fontFamily: '"Press Start 2P"',
       fontSize: "32px",
       color: "#c850c0",
@@ -95,120 +109,163 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const selChar = getCharacter(getSelected());
-    const player = this.add.sprite(cx, cy - 30, `${selChar.id}-${selChar.anims.idle.sheet}`).setScale(1.5).setDepth(5);
+    const player = this.add.sprite(cx, heroY, `${selChar.id}-${selChar.anims.idle.sheet}`).setScale(1.5).setDepth(5);
     player.play(`${selChar.id}-anim-idle`);
 
-    this.add.text(cx, cy + 40, "Enter your alias", {
+    this.add.rectangle(cx, panelY, 320, 118, 0x111426, 0.9)
+      .setStrokeStyle(2, 0x7b2d8e)
+      .setDepth(5);
+
+    this.add.text(cx, panelY - 38, "MIDNIGHT WALLET LOGIN", {
       fontFamily: '"Press Start 2P"',
       fontSize: "10px",
       color: "#8866aa",
+      align: "center",
     }).setOrigin(0.5).setDepth(5);
 
-    this.aliasHintText = this.add.text(cx, cy + 78, "TAP BOX TO TYPE ALIAS", {
+    this.statusText = this.add.text(cx, panelY - 14, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "8px",
-      color: "#88ccff",
+      color: "#ffdd44",
       align: "center",
+    }).setOrigin(0.5).setDepth(5);
+
+    this.addressText = this.add.text(cx, panelY + 12, "", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: "7px",
+      color: "#ffffff",
+      align: "center",
+      wordWrap: { width: Math.min(280, GAME_WIDTH - 90), useAdvancedWrap: true },
       lineSpacing: 8,
     }).setOrigin(0.5).setDepth(5);
 
-    this.aliasBox = this.add.rectangle(cx, cy + 45, 240, 34, 0x1a1a2e)
-      .setStrokeStyle(2, 0x7b2d8e)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(5);
-    this.aliasBox.on("pointerdown", () => {
-      this.pulseAliasBox();
-      this.focusHiddenInput();
-    });
-
-    // Hidden DOM input to trigger mobile keyboard
-    this.hiddenInput = document.createElement("input");
-    this.hiddenInput.type = "text";
-    this.hiddenInput.maxLength = 20;
-    this.hiddenInput.autocapitalize = "off";
-    this.hiddenInput.autocomplete = "off";
-    this.hiddenInput.setAttribute("autocorrect", "off");
-    Object.assign(this.hiddenInput.style, {
-      position: "fixed",
-      left: "0",
-      top: "0",
-      width: "1px",
-      height: "1px",
-      opacity: "0",
-      zIndex: "-1",
-      border: "none",
-      outline: "none",
-      background: "transparent",
-      caretColor: "transparent",
-      fontSize: "16px", // prevents iOS zoom on focus
-    });
-    document.body.appendChild(this.hiddenInput);
-    this.hiddenInput.value = this.aliasValue;
-    this.hiddenInput.addEventListener("input", () => this.syncFromHiddenInput());
-    this.hiddenInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") this.startGame();
-    });
-
-    this.aliasText = this.add.text(cx, cy + 45, "", {
+    this.hintText = this.add.text(cx, panelY + 44, "", {
       fontFamily: '"Press Start 2P"',
-      fontSize: "10px",
-      color: "#c850c0",
+      fontSize: "7px",
+      color: "#88ccff",
       align: "center",
+      wordWrap: { width: Math.min(280, GAME_WIDTH - 90), useAdvancedWrap: true },
+      lineSpacing: 8,
     }).setOrigin(0.5).setDepth(5);
 
-    this.errorText = this.add.text(cx, cy + 120, "", {
+    this.errorText = this.add.text(cx, panelY + 74, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "8px",
-      color: "#ff4444",
+      color: "#ff6666",
+      align: "center",
+      wordWrap: { width: Math.min(300, GAME_WIDTH - 80), useAdvancedWrap: true },
     }).setOrigin(0.5).setDepth(5);
 
-    const btnBg = this.add.rectangle(cx, cy + 145, 160, 36, 0x7b2d8e).setInteractive({ useHandCursor: true }).setDepth(5);
-    this.add.text(cx, cy + 145, "R U N", {
+    const btnW = 210;
+    const btnH = 34;
+    const btnFont = "10px";
+    const btnGap = 38;
+    const btn1Y = panelY + 104;
+    const btn2Y = btn1Y + btnGap;
+    const btn3Y = btn2Y + btnGap;
+
+    // Connect wallet button (visible when disconnected)
+    this.connectBg = this.add.rectangle(cx, btn1Y, btnW, btnH, 0x7b2d8e)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.connectLabel = this.add.text(cx, btn1Y, "", {
       fontFamily: '"Press Start 2P"',
-      fontSize: "14px",
+      fontSize: btnFont,
       color: "#ffffff",
     }).setOrigin(0.5).setDepth(5);
 
-    btnBg.on("pointerover", () => btnBg.setFillStyle(0xc850c0));
-    btnBg.on("pointerout", () => btnBg.setFillStyle(0x7b2d8e));
-    btnBg.on("pointerdown", () => this.startGame());
+    this.connectBg.on("pointerover", () => {
+      if (!this.isConnecting) this.connectBg.setFillStyle(0xc850c0);
+    });
+    this.connectBg.on("pointerout", () => this.refreshButtons());
+    this.connectBg.on("pointerdown", () => void this.connectWallet());
 
-    const saved = localStorage.getItem("mr_player");
-    if (saved) {
-      const data = JSON.parse(saved) as PlayerData;
-      this.aliasValue = data.alias;
+    // Run button (slot 1 when connected)
+    this.runBg = this.add.rectangle(cx, btn1Y, btnW, btnH, 0x7b2d8e)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.runLabel = this.add.text(cx, btn1Y, "R U N", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: btnFont,
+      color: "#ffffff",
+    }).setOrigin(0.5).setDepth(5);
 
-      const achBg = this.add.rectangle(cx, cy + 180, 180, 26, 0x2a2a3e).setInteractive({ useHandCursor: true }).setDepth(5);
-      this.add.text(cx, cy + 180, "ACHIEVEMENTS", {
-        fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#ffdd44",
-      }).setOrigin(0.5).setDepth(5);
+    this.runBg.on("pointerover", () => {
+      if (this.playerData) this.runBg.setFillStyle(0xc850c0);
+    });
+    this.runBg.on("pointerout", () => this.refreshButtons());
+    this.runBg.on("pointerdown", () => this.startGame());
 
-      achBg.on("pointerover", () => achBg.setFillStyle(0x4a4a5e));
-      achBg.on("pointerout", () => achBg.setFillStyle(0x2a2a3e));
-      achBg.on("pointerdown", () => {
-        this.cleanup();
+    // Row 2: Achievements + High Scores side by side
+    const colBtnW = Math.floor((btnW - btnGap + btnH) / 2);
+    const colGap = btnW - colBtnW * 2;
+    const colL = cx - (colBtnW + colGap) / 2;
+    const colR = cx + (colBtnW + colGap) / 2;
+
+    this.achievementsBg = this.add.rectangle(colL, btn2Y, colBtnW, btnH, 0x2a2a3e)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.achievementsLabel = this.add.text(colL, btn2Y, "ACHIEVEMENTS", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: "8px",
+      color: "#ffdd44",
+    }).setOrigin(0.5).setDepth(5);
+
+    this.achievementsBg.on("pointerover", () => this.achievementsBg?.setFillStyle(0x4a4a5e));
+    this.achievementsBg.on("pointerout", () => this.achievementsBg?.setFillStyle(0x2a2a3e));
+    this.achievementsBg.on("pointerdown", () => {
+      if (this.playerData) {
         this.scene.start("AchievementsScene", {
-          player: data,
+          player: this.playerData,
           returnScene: "MenuScene",
         });
-      });
+      }
+    });
+
+    this.scoresBg = this.add.rectangle(colR, btn2Y, colBtnW, btnH, 0x2a2a3e)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.scoresLabel = this.add.text(colR, btn2Y, "HIGH SCORES", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: "8px",
+      color: "#aaaacc",
+    }).setOrigin(0.5).setDepth(5);
+
+    this.scoresBg.on("pointerover", () => this.scoresBg.setFillStyle(0x4a4a5e));
+    this.scoresBg.on("pointerout", () => this.scoresBg.setFillStyle(0x2a2a3e));
+    this.scoresBg.on("pointerdown", () => {
+      if (this.playerData) {
+        this.scene.start("LeaderboardScene", { player: this.playerData });
+      }
+    });
+
+    // Logout button (slot 3 when connected)
+    this.logoutBg = this.add.rectangle(cx, btn3Y, btnW, btnH, 0x5e2a2a)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.logoutLabel = this.add.text(cx, btn3Y, "LOGOUT", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: btnFont,
+      color: "#ff8888",
+    }).setOrigin(0.5).setDepth(5);
+
+    this.logoutBg.on("pointerover", () => this.logoutBg.setFillStyle(0x7e3a3a));
+    this.logoutBg.on("pointerout", () => this.logoutBg.setFillStyle(0x5e2a2a));
+    this.logoutBg.on("pointerdown", () => this.disconnectWallet());
+
+    const saved = this.loadSavedPlayer();
+    if (saved) {
+      this.playerData = saved;
     }
 
-    this.keyboardHandler = (event: KeyboardEvent) => this.handleKeydown(event);
-    this.input.keyboard!.on("keydown", this.keyboardHandler);
+    this.input.keyboard?.on("keydown-ENTER", () => this.startGame());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanup());
 
-    this.caretTimer = this.time.addEvent({
-      delay: 450,
-      loop: true,
-      callback: () => {
-        this.caretVisible = !this.caretVisible;
-        this.refreshAliasText();
-      },
+    this.refreshWalletUi();
+    this.time.delayedCall(0, () => {
+      void this.autoConnectWallet();
     });
-
-    this.refreshAliasText();
   }
 
   update(_time: number, delta: number) {
@@ -233,102 +290,143 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
-  private handleKeydown(event: KeyboardEvent) {
-    if (event.key === "Enter") {
-      this.startGame();
-      return;
-    }
-
-    // If the hidden input is focused, let syncFromHiddenInput handle character input
-    // to avoid doubling keystrokes on desktop
-    if (this.hiddenInput && document.activeElement === this.hiddenInput) {
-      return;
-    }
-
-    if (event.key === "Backspace") {
-      this.aliasValue = this.aliasValue.slice(0, -1);
-      if (this.hiddenInput) this.hiddenInput.value = this.aliasValue;
-      this.errorText.setText("");
-      this.refreshAliasText();
-      return;
-    }
-
-    if (event.key.length === 1 && this.aliasValue.length < 20 && /^[a-zA-Z0-9 _-]$/.test(event.key)) {
-      this.aliasValue += event.key;
-      if (this.hiddenInput) this.hiddenInput.value = this.aliasValue;
-      this.errorText.setText("");
-      this.refreshAliasText();
+  private loadSavedPlayer(): PlayerData | null {
+    try {
+      const raw = localStorage.getItem("mr_player");
+      return raw ? JSON.parse(raw) as PlayerData : null;
+    } catch {
+      localStorage.removeItem("mr_player");
+      return null;
     }
   }
 
-  private refreshAliasText() {
-    const hasAlias = this.aliasValue.length > 0;
-    const caret = this.caretVisible ? "_" : " ";
-    const display = hasAlias ? this.aliasValue + caret : "alias" + caret;
-    this.aliasText.setText(display);
-    this.aliasText.setColor(hasAlias ? "#c850c0" : "#6666aa");
+  private refreshWalletUi() {
+    const hasPlayer = Boolean(this.playerData);
+    const isReconnecting = this.isAutoConnecting && !hasPlayer;
+
+    if (hasPlayer) {
+      this.statusText.setText("CONNECTED");
+      this.statusText.setColor("#77cc77");
+    } else if (isReconnecting) {
+      this.statusText.setText("RECONNECTING WALLET...");
+      this.statusText.setColor("#ffdd44");
+    } else {
+      this.statusText.setText("DISCONNECTED");
+      this.statusText.setColor("#aa88cc");
+    }
+
+    if (hasPlayer && this.playerData) {
+      const playerIdentifier = getPlayerIdentifier(this.playerData);
+      this.addressText.setText(
+        this.playerData.wallet_address ? shortenWalletAddress(playerIdentifier) : playerIdentifier,
+      );
+      this.addressText.setColor("#ffffff");
+      this.hintText.setText(`Wallet address is your runner ID on ${MIDNIGHT_NETWORK_ID}.`);
+    } else if (isReconnecting) {
+      this.addressText.setText("Checking Midnight Lace and restoring your runner identity.");
+      this.addressText.setColor("#88ccff");
+      this.hintText.setText(`Expected network: ${MIDNIGHT_NETWORK_ID}.`);
+      this.connectLabel.setText("RECONNECTING...");
+    } else {
+      this.addressText.setText("Connect Midnight Lace to use your wallet address for scores, achievements, and records.");
+      this.addressText.setColor("#88ccff");
+      this.hintText.setText(`Expected network: ${MIDNIGHT_NETWORK_ID}. No alias entry is needed.`);
+      this.connectLabel.setText(this.isConnecting ? "CONNECTING..." : "CONNECT WALLET");
+    }
+
+    // Show connect button when disconnected, show run/achievements/logout when connected
+    this.connectBg.setVisible(!hasPlayer);
+    this.connectLabel.setVisible(!hasPlayer);
+    this.runBg.setVisible(hasPlayer);
+    this.runLabel.setVisible(hasPlayer);
+    this.achievementsBg.setVisible(hasPlayer);
+    this.achievementsLabel.setVisible(hasPlayer);
+    this.scoresBg.setVisible(hasPlayer);
+    this.scoresLabel.setVisible(hasPlayer);
+    this.logoutBg.setVisible(hasPlayer);
+    this.logoutLabel.setVisible(hasPlayer);
+
+    this.refreshButtons();
   }
 
-  private focusHiddenInput() {
-    if (this.hiddenInput) {
-      this.hiddenInput.value = this.aliasValue;
-      this.hiddenInput.focus();
+  private refreshButtons() {
+    if (this.isConnecting) {
+      this.connectBg.setFillStyle(0x3a3a52);
+    } else {
+      this.connectBg.setFillStyle(0x7b2d8e);
+    }
+
+    this.runBg.setFillStyle(0x7b2d8e);
+    this.achievementsBg.setFillStyle(0x2a2a3e);
+    this.scoresBg.setFillStyle(0x2a2a3e);
+    this.logoutBg.setFillStyle(0x5e2a2a);
+  }
+
+  private async autoConnectWallet() {
+    if (this.hasAttemptedAutoConnect) {
+      return;
+    }
+
+    this.hasAttemptedAutoConnect = true;
+    this.isAutoConnecting = true;
+    this.refreshWalletUi();
+    try {
+      await this.connectWallet(true);
+    } finally {
+      this.isAutoConnecting = false;
+      this.refreshWalletUi();
     }
   }
 
-  private syncFromHiddenInput() {
-    if (!this.hiddenInput) return;
-    const raw = this.hiddenInput.value.replace(/[^a-zA-Z0-9 _-]/g, "").slice(0, 20);
-    this.hiddenInput.value = raw;
-    this.aliasValue = raw;
+  private async connectWallet(isAutoConnect = false) {
+    if (this.isConnecting) {
+      return;
+    }
+
+    this.isConnecting = true;
     this.errorText.setText("");
-    this.refreshAliasText();
-  }
-
-  private pulseAliasBox() {
-    this.aliasBox.setStrokeStyle(2, 0xc850c0);
-    this.aliasHintText.setText("TAP HERE TO TYPE\nTHEN TAP RUN");
-    this.time.delayedCall(180, () => {
-      this.aliasBox.setStrokeStyle(2, 0x7b2d8e);
-    });
-  }
-
-  private async startGame() {
-    const alias = this.aliasValue.trim();
-    if (!alias) {
-      this.errorText.setText("enter an alias first");
-      return;
-    }
-    if (alias.length < 2) {
-      this.errorText.setText("at least 2 characters");
-      return;
-    }
+    this.refreshWalletUi();
 
     try {
-      this.hiddenInput?.blur();
-      const player = await api.registerAlias(alias);
+      const { address } = await connectMidnightWallet();
+      const player = await api.registerWallet(address, MIDNIGHT_NETWORK_ID);
+      this.playerData = player;
       localStorage.setItem("mr_player", JSON.stringify(player));
-      this.cleanup();
-      this.scene.start("CharacterSelectScene", { player });
-    } catch (err) {
-      this.errorText.setText("server error - try again");
-      console.error(err);
+      this.refreshWalletUi();
+    } catch (error) {
+      if (isAutoConnect) {
+        if (!this.playerData) {
+          this.errorText.setText("");
+        }
+      } else {
+        this.errorText.setText(getMidnightWalletError(error));
+      }
+      console.error(error);
+    } finally {
+      this.isConnecting = false;
+      this.refreshWalletUi();
     }
+  }
+
+  private disconnectWallet() {
+    this.playerData = null;
+    localStorage.removeItem("mr_player");
+    this.errorText.setText("");
+    this.refreshWalletUi();
+  }
+
+  private startGame() {
+    if (!this.playerData) {
+      this.errorText.setText("connect your wallet first");
+      return;
+    }
+
+    this.errorText.setText("");
+    this.scene.start("CharacterSelectScene", { player: this.playerData });
   }
 
   private cleanup() {
-    if (this.keyboardHandler) {
-      this.input.keyboard?.off("keydown", this.keyboardHandler);
-      this.keyboardHandler = undefined;
-    }
-    if (this.caretTimer) {
-      this.caretTimer.remove(false);
-      this.caretTimer = undefined;
-    }
-    if (this.hiddenInput) {
-      this.hiddenInput.remove();
-      this.hiddenInput = undefined;
-    }
+    this.input.keyboard?.off("keydown-ENTER");
   }
 
   shutdown() {
