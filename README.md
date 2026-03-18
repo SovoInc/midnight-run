@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173** and enter an alias to play.
+Open **http://localhost:5173**, connect a Midnight wallet extension such as Midnight Lace, and your shielded wallet address will be used as your player identity.
 
 ## Controls
 
@@ -60,7 +60,8 @@ midnight_runner/
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /api/register` | Register/login by alias |
+| `POST /api/wallet` | Register/login by wallet address |
+| `POST /api/alias` | Legacy alias registration |
 | `POST /api/scores` | Submit a run |
 | `GET /api/scores/top?limit=N` | Leaderboard |
 | `GET /achievements/public/list` | All achievement definitions (PRC-1) |
@@ -81,3 +82,7 @@ cargo build --release  # binary at target/release/midnight-runner-server
 ```
 
 Serve `frontend/dist/` with any static file server and point the backend at port 3001 (or adjust the Vite proxy in `vite.config.ts`).
+
+## Midnight Wallet Network
+
+The frontend connects wallets against `preview` by default. Override this with `VITE_MIDNIGHT_NETWORK_ID` if you need a different Midnight network.
