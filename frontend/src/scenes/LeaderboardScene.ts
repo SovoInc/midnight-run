@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
-import { api, PlayerData } from "../api";
+import { api, formatScoreIdentifier, PlayerData } from "../api";
 
 export class LeaderboardScene extends Phaser.Scene {
   private playerData!: PlayerData;
@@ -34,7 +34,7 @@ export class LeaderboardScene extends Phaser.Scene {
     const entriesTop = contentTop + 50;
 
     try {
-      const scores = await api.getTopScores(20);
+      const scores = await api.getTopScores(20, this.playerData.network_id);
 
       scores.forEach((entry, i) => {
         const y = entriesTop + i * 16;
@@ -47,11 +47,11 @@ export class LeaderboardScene extends Phaser.Scene {
         }
 
         const rank = String(entry.rank).padStart(2, " ");
-        const alias = entry.alias.padEnd(16, " ").substring(0, 16);
+        const displayName = formatScoreIdentifier(entry, 16).padEnd(16, " ");
         const score = String(entry.score).padStart(8, " ");
         const dist = String(entry.distance).padStart(6, " ") + "m";
 
-        this.add.text(cx, y, `${rank}   ${alias}${score}  ${dist}`, {
+        this.add.text(cx, y, `${rank}   ${displayName}${score}  ${dist}`, {
           fontFamily: '"Press Start 2P"', fontSize: "7px", color,
         }).setOrigin(0.5);
       });

@@ -4,11 +4,13 @@ export interface PlayerData {
   id: number;
   alias: string;
   wallet_address: string | null;
+  network_id: string;
 }
 
 export interface ScoreEntry {
   rank: number;
-  alias: string;
+  display_name: string;
+  wallet_address: string | null;
   score: number;
   distance: number;
   player_id: number;
@@ -59,12 +61,45 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
+export function getPlayerIdentifier(player: Pick<PlayerData, "alias" | "wallet_address">): string {
+  return player.wallet_address ?? player.alias;
+}
+
+export function shortenWalletAddress(value: string): string {
+  if (value.length <= 14) {
+    return value;
+  }
+
+  return `${value.slice(0, 3)}...${value.slice(-8)}`;
+}
+
+export function truncateIdentifier(value: string, maxLength = 18): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  const sideLength = Math.max(4, Math.floor((maxLength - 3) / 2));
+  return `${value.slice(0, sideLength)}...${value.slice(-sideLength)}`;
+}
+
+export function formatScoreIdentifier(entry: Pick<ScoreEntry, "display_name" | "wallet_address">, maxAliasLength = 18): string {
+  if (entry.wallet_address) {
+    return shortenWalletAddress(entry.display_name);
+  }
+
+  return truncateIdentifier(entry.display_name, maxAliasLength);
+}
+
 export const api = {
   registerAlias: (alias: string) => post<PlayerData>("/api/alias", { alias }),
 
+  registerWallet: (walletAddress: string, networkId: string) =>
+    post<PlayerData>("/api/wallet", { wallet_address: walletAddress, network_id: networkId }),
+
   submitScore: (data: RunData) => post<{ id: number }>("/api/scores", data),
 
-  getTopScores: (limit = 20) => get<ScoreEntry[]>(`/api/scores/top?limit=${limit}`),
+  getTopScores: (limit = 20, networkId?: string) =>
+    get<ScoreEntry[]>(`/api/scores/top?limit=${limit}${networkId ? `&network_id=${networkId}` : ""}`),
 
   getPlayerScores: (playerId: number) =>
     get<ScoreEntry[]>(`/api/scores/player/${playerId}`),

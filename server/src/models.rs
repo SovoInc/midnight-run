@@ -5,12 +5,24 @@ pub struct Player {
     pub id: i64,
     pub alias: String,
     pub wallet_address: Option<String>,
+    pub network_id: String,
     pub created_at: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AliasRequest {
     pub alias: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WalletRequest {
+    pub wallet_address: String,
+    #[serde(default = "default_network")]
+    pub network_id: String,
+}
+
+fn default_network() -> String {
+    "preview".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -28,7 +40,8 @@ pub struct ScoreSubmission {
 #[derive(Debug, Serialize)]
 pub struct ScoreEntry {
     pub rank: i64,
-    pub alias: String,
+    pub display_name: String,
+    pub wallet_address: Option<String>,
     pub score: i64,
     pub distance: i64,
     pub player_id: i64,
@@ -63,6 +76,7 @@ pub struct AchievementRecord {
 #[derive(Debug, Deserialize)]
 pub struct LimitQuery {
     pub limit: Option<i64>,
+    pub network_id: Option<String>,
 }
 
 // PRC-6 types
@@ -110,6 +124,7 @@ pub struct ChannelQuery {
     pub offset: Option<i64>,
     #[serde(rename = "minAchievements")]
     pub min_achievements: Option<i64>,
+    pub network_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -193,6 +208,7 @@ pub struct Prc1ListQuery {
     pub category: Option<String>,
     #[serde(rename = "isActive")]
     pub is_active: Option<bool>,
+    pub network_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

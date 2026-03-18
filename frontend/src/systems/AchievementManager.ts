@@ -59,23 +59,25 @@ export const DEFINITIONS: AchievementDef[] = [
   { key: "midnight_legend", name: "Midnight Legend", hint: "Reach the top 10 leaderboard", check: (r, c) => r.score > 0 && r.score >= c.topTenThreshold, progress: (p) => ({ current: p.bestScore, target: Math.max(p.bestScore, 1) }) },
 ];
 
-const PROGRESS_KEY = "mr_progress";
+function progressKey(networkId?: string): string {
+  return networkId ? `mr_progress_${networkId}` : "mr_progress";
+}
 
-export function loadProgress(): PlayerProgress {
+export function loadProgress(networkId?: string): PlayerProgress {
   const defaults: PlayerProgress = {
     totalDistance: 0, totalOrbs: 0, totalDashes: 0, totalRuns: 0,
     bestScore: 0, bestDistance: 0, bestNearMisses: 0, bestWallsBroken: 0,
     maxSpeedReached: false, bestNoDamageDistance: 0,
   };
   try {
-    const raw = localStorage.getItem(PROGRESS_KEY);
+    const raw = localStorage.getItem(progressKey(networkId));
     if (raw) return { ...defaults, ...JSON.parse(raw) };
   } catch { /* corrupt data */ }
   return defaults;
 }
 
-export function saveProgress(p: PlayerProgress) {
-  localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+export function saveProgress(p: PlayerProgress, networkId?: string) {
+  localStorage.setItem(progressKey(networkId), JSON.stringify(p));
 }
 
 export function updateProgress(prev: PlayerProgress, run: RunStats): PlayerProgress {
@@ -103,13 +105,13 @@ export class AchievementManager {
     totalRuns: 0, bestScore: 0, topTenThreshold: 0,
   };
 
-  async init(playerId: number) {
+  async init(playerId: number, networkId?: string) {
     this.playerId = playerId;
     try {
       const existing = await api.getPlayerAchievements(playerId);
       for (const a of existing) this.unlocked.add(a.achievement_key);
 
-      const top = await api.getTopScores(10);
+      const top = await api.getTopScores(10, networkId);
       this.cumulative.topTenThreshold = top.length >= 10 ? top[top.length - 1].score : 0;
 
       const playerScores = await api.getPlayerScores(playerId);

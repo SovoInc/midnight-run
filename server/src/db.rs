@@ -6,6 +6,10 @@ pub struct Db {
 }
 
 impl Db {
+    fn wallet_alias(wallet_address: &str) -> String {
+        format!("wallet:{wallet_address}")
+    }
+
     pub fn new(path: &str) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
@@ -59,6 +63,38 @@ impl Db {
             CREATE INDEX IF NOT EXISTS idx_session_wallets_player ON session_wallets(main_player_id);
             ",
         )?;
+
+        // Migration: add network_id to players
+        let has_network_id: bool = conn.prepare("SELECT network_id FROM players LIMIT 0")
+            .is_ok();
+        if !has_network_id {
+            conn.execute_batch(
+                "ALTER TABLE players ADD COLUMN network_id TEXT NOT NULL DEFAULT 'legacy';
+                 CREATE UNIQUE INDEX IF NOT EXISTS idx_players_wallet_network ON players(wallet_address, network_id);",
+            )?;
+        }
+
+        // One-time migration: re-tag pre-network players as legacy.
+        // The network_id column was added with DEFAULT 'preview' (or 'legacy'),
+        // but players created before the network-aware registration flow should be
+        // on 'legacy'. We detect this via a migration flag stored in a pragma.
+        let migrated: String = conn.query_row(
+            "SELECT COALESCE((SELECT value FROM _migrations WHERE key = 'legacy_retag'), '')",
+            [],
+            |r| r.get(0),
+        ).unwrap_or_default();
+        if migrated.is_empty() {
+            conn.execute_batch("CREATE TABLE IF NOT EXISTS _migrations (key TEXT PRIMARY KEY, value TEXT NOT NULL)")?;
+            conn.execute(
+                "UPDATE players SET network_id = 'legacy' WHERE network_id = 'preview'",
+                [],
+            )?;
+            conn.execute(
+                "INSERT OR REPLACE INTO _migrations (key, value) VALUES ('legacy_retag', 'done')",
+                [],
+            )?;
+        }
+
         Ok(())
     }
 
@@ -77,6 +113,22 @@ impl Db {
         Ok(row)
     }
 
+    pub fn upsert_wallet(&self, wallet_address: &str, network_id: &str) -> Result<(i64, String, Option<String>, String)> {
+        let conn = self.conn.lock().unwrap();
+        let alias = Self::wallet_alias(wallet_address);
+        conn.execute(
+            "INSERT OR IGNORE INTO players (alias, wallet_address, network_id) VALUES (?1, ?2, ?3)",
+            params![alias, wallet_address, network_id],
+        )?;
+        let mut stmt = conn.prepare(
+            "SELECT id, alias, wallet_address, network_id FROM players WHERE wallet_address = ?1 AND network_id = ?2",
+        )?;
+        let row = stmt.query_row(params![wallet_address, network_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?;
+        Ok(row)
+    }
+
     pub fn insert_score(
         &self, player_id: i64, score: i64, distance: i64,
         orbs: i64, near_misses: i64, dashes: i64, walls: i64, duration: f64,
@@ -89,28 +141,29 @@ impl Db {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn top_scores(&self, limit: i64) -> Result<Vec<(i64, String, i64, i64, i64)>> {
+    pub fn top_scores(&self, limit: i64, network_id: &str) -> Result<Vec<(i64, String, Option<String>, i64, i64, i64)>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT s.id, p.alias, s.score, s.distance, s.player_id
+            "SELECT s.id, COALESCE(p.wallet_address, p.alias), p.wallet_address, s.score, s.distance, s.player_id
              FROM scores s JOIN players p ON s.player_id = p.id
+             WHERE p.network_id = ?2
              ORDER BY s.score DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map(params![limit], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+        let rows = stmt.query_map(params![limit, network_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
         })?.collect::<Result<Vec<_>>>()?;
         Ok(rows)
     }
 
-    pub fn player_scores(&self, player_id: i64) -> Result<Vec<(i64, String, i64, i64, i64)>> {
+    pub fn player_scores(&self, player_id: i64) -> Result<Vec<(i64, String, Option<String>, i64, i64, i64)>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT s.id, p.alias, s.score, s.distance, s.player_id
+            "SELECT s.id, COALESCE(p.wallet_address, p.alias), p.wallet_address, s.score, s.distance, s.player_id
              FROM scores s JOIN players p ON s.player_id = p.id
              WHERE s.player_id = ?1 ORDER BY s.score DESC LIMIT 20",
         )?;
         let rows = stmt.query_map(params![player_id], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
         })?.collect::<Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -135,95 +188,98 @@ impl Db {
         Ok(rows)
     }
 
-    pub fn total_players(&self) -> Result<i64> {
+    pub fn total_players(&self, network_id: &str) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM players", [], |r| r.get(0))?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM players WHERE network_id = ?1",
+            params![network_id], |r| r.get(0),
+        )?;
         Ok(count)
     }
 
-    pub fn achievement_unlock_count(&self, key: &str) -> Result<i64> {
+    pub fn achievement_unlock_count(&self, key: &str, network_id: &str) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         let count: i64 = conn.query_row(
-            "SELECT COUNT(DISTINCT player_id) FROM achievements WHERE achievement_key = ?1",
-            params![key], |r| r.get(0),
+            "SELECT COUNT(DISTINCT a.player_id) FROM achievements a JOIN players p ON a.player_id = p.id WHERE a.achievement_key = ?1 AND p.network_id = ?2",
+            params![key, network_id], |r| r.get(0),
         )?;
         Ok(count)
     }
 
     pub fn channel_leaderboard(
-        &self, start: &str, end: &str, limit: i64, offset: i64,
+        &self, start: &str, end: &str, limit: i64, offset: i64, network_id: &str,
     ) -> Result<(i64, f64, Vec<(String, Option<String>, f64)>)> {
         let conn = self.conn.lock().unwrap();
         let total_players: i64 = conn.query_row(
-            "SELECT COUNT(DISTINCT player_id) FROM scores WHERE created_at >= ?1 AND created_at <= ?2",
-            params![start, end], |r| r.get(0),
+            "SELECT COUNT(DISTINCT s.player_id) FROM scores s JOIN players p ON s.player_id = p.id WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?3",
+            params![start, end, network_id], |r| r.get(0),
         )?;
         let total_score: f64 = conn.query_row(
-            "SELECT COALESCE(SUM(best), 0) FROM (SELECT MAX(score) as best FROM scores WHERE created_at >= ?1 AND created_at <= ?2 GROUP BY player_id)",
-            params![start, end], |r| r.get(0),
+            "SELECT COALESCE(SUM(best), 0) FROM (SELECT MAX(s.score) as best FROM scores s JOIN players p ON s.player_id = p.id WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?3 GROUP BY s.player_id)",
+            params![start, end, network_id], |r| r.get(0),
         )?;
         let mut stmt = conn.prepare(
-            "SELECT COALESCE(p.wallet_address, 'alias:' || p.alias), p.alias, MAX(s.score) as best
+            "SELECT COALESCE(p.wallet_address, 'alias:' || p.alias), COALESCE(p.wallet_address, p.alias), MAX(s.score) as best
              FROM scores s JOIN players p ON s.player_id = p.id
-             WHERE s.created_at >= ?1 AND s.created_at <= ?2
+             WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?5
              GROUP BY s.player_id ORDER BY best DESC LIMIT ?3 OFFSET ?4",
         )?;
-        let rows = stmt.query_map(params![start, end, limit, offset], |row| {
+        let rows = stmt.query_map(params![start, end, limit, offset, network_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, f64>(2)?))
         })?.collect::<Result<Vec<_>>>()?;
         Ok((total_players, total_score, rows))
     }
 
     pub fn channel_cumulative(
-        &self, column: &str, start: &str, end: &str, limit: i64, offset: i64,
+        &self, column: &str, start: &str, end: &str, limit: i64, offset: i64, network_id: &str,
     ) -> Result<(i64, f64, Vec<(String, Option<String>, f64)>)> {
         let conn = self.conn.lock().unwrap();
         let col = match column {
             "orbs_collected" | "distance" | "near_misses" | "dashes_used" | "walls_broken" => column,
             _ => return Ok((0, 0.0, vec![])),
         };
-        let q_total_players = format!(
-            "SELECT COUNT(DISTINCT player_id) FROM scores WHERE created_at >= ?1 AND created_at <= ?2"
-        );
-        let total_players: i64 = conn.query_row(&q_total_players, params![start, end], |r| r.get(0))?;
+        let total_players: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT s.player_id) FROM scores s JOIN players p ON s.player_id = p.id WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?3",
+            params![start, end, network_id], |r| r.get(0),
+        )?;
 
         let q_total_score = format!(
-            "SELECT COALESCE(SUM({}), 0) FROM scores WHERE created_at >= ?1 AND created_at <= ?2", col
+            "SELECT COALESCE(SUM(s.{}), 0) FROM scores s JOIN players p ON s.player_id = p.id WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?3", col
         );
-        let total_score: f64 = conn.query_row(&q_total_score, params![start, end], |r| r.get(0))?;
+        let total_score: f64 = conn.query_row(&q_total_score, params![start, end, network_id], |r| r.get(0))?;
 
         let q = format!(
-            "SELECT COALESCE(p.wallet_address, 'alias:' || p.alias), p.alias, SUM(s.{}) as total
+            "SELECT COALESCE(p.wallet_address, 'alias:' || p.alias), COALESCE(p.wallet_address, p.alias), SUM(s.{}) as total
              FROM scores s JOIN players p ON s.player_id = p.id
-             WHERE s.created_at >= ?1 AND s.created_at <= ?2
+             WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?5
              GROUP BY s.player_id ORDER BY total DESC LIMIT ?3 OFFSET ?4", col
         );
         let mut stmt = conn.prepare(&q)?;
-        let rows = stmt.query_map(params![start, end, limit, offset], |row| {
+        let rows = stmt.query_map(params![start, end, limit, offset, network_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, f64>(2)?))
         })?.collect::<Result<Vec<_>>>()?;
         Ok((total_players, total_score, rows))
     }
 
     pub fn channel_interactions(
-        &self, start: &str, end: &str, limit: i64, offset: i64,
+        &self, start: &str, end: &str, limit: i64, offset: i64, network_id: &str,
     ) -> Result<(i64, f64, Vec<(String, Option<String>, f64)>)> {
         let conn = self.conn.lock().unwrap();
         let total_players: i64 = conn.query_row(
-            "SELECT COUNT(DISTINCT player_id) FROM scores WHERE created_at >= ?1 AND created_at <= ?2",
-            params![start, end], |r| r.get(0),
+            "SELECT COUNT(DISTINCT s.player_id) FROM scores s JOIN players p ON s.player_id = p.id WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?3",
+            params![start, end, network_id], |r| r.get(0),
         )?;
         let total_score: f64 = conn.query_row(
-            "SELECT CAST(COUNT(*) AS REAL) FROM scores WHERE created_at >= ?1 AND created_at <= ?2",
-            params![start, end], |r| r.get(0),
+            "SELECT CAST(COUNT(*) AS REAL) FROM scores s JOIN players p ON s.player_id = p.id WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?3",
+            params![start, end, network_id], |r| r.get(0),
         )?;
         let mut stmt = conn.prepare(
-            "SELECT COALESCE(p.wallet_address, 'alias:' || p.alias), p.alias, CAST(COUNT(*) AS REAL) as runs
+            "SELECT COALESCE(p.wallet_address, 'alias:' || p.alias), COALESCE(p.wallet_address, p.alias), CAST(COUNT(*) AS REAL) as runs
              FROM scores s JOIN players p ON s.player_id = p.id
-             WHERE s.created_at >= ?1 AND s.created_at <= ?2
+             WHERE s.created_at >= ?1 AND s.created_at <= ?2 AND p.network_id = ?5
              GROUP BY s.player_id ORDER BY runs DESC LIMIT ?3 OFFSET ?4",
         )?;
-        let rows = stmt.query_map(params![start, end, limit, offset], |row| {
+        let rows = stmt.query_map(params![start, end, limit, offset, network_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, f64>(2)?))
         })?.collect::<Result<Vec<_>>>()?;
         Ok((total_players, total_score, rows))

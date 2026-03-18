@@ -12,11 +12,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-async fn get_metadata(db: web::Data<Db>) -> HttpResponse {
-    let total = db.total_players().unwrap_or(0);
+async fn get_metadata(db: web::Data<Db>, query: web::Query<ChannelQuery>) -> HttpResponse {
+    let network_id = query.network_id.as_deref().unwrap_or("preview");
+    let total = db.total_players(network_id).unwrap_or(0);
 
     let achievements: Vec<MetricAchievement> = ACHIEVEMENTS.iter().map(|a| {
-        let unlock_count = db.achievement_unlock_count(a.name).unwrap_or(0);
+        let unlock_count = db.achievement_unlock_count(a.name, network_id).unwrap_or(0);
         let pct = if total > 0 { Some((unlock_count as f64 / total as f64) * 100.0) } else { None };
         MetricAchievement {
             name: a.name.to_string(),
@@ -56,11 +57,12 @@ async fn get_channel_rankings(
     let end = query.end_date.clone().unwrap_or_else(|| now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
     let limit = query.limit.unwrap_or(50).min(1000);
     let offset = query.offset.unwrap_or(0);
+    let network_id = query.network_id.as_deref().unwrap_or("preview");
 
     let result = match channel.as_str() {
-        "leaderboard" => db.channel_leaderboard(&start, &end, limit, offset),
-        "interactions" => db.channel_interactions(&start, &end, limit, offset),
-        "orbs_collected" | "distance" | "near_misses" => db.channel_cumulative(&channel, &start, &end, limit, offset),
+        "leaderboard" => db.channel_leaderboard(&start, &end, limit, offset, network_id),
+        "interactions" => db.channel_interactions(&start, &end, limit, offset, network_id),
+        "orbs_collected" | "distance" | "near_misses" => db.channel_cumulative(&channel, &start, &end, limit, offset, network_id),
         _ => return HttpResponse::NotFound().json(serde_json::json!({ "error": "unknown channel" })),
     };
 
@@ -136,7 +138,7 @@ async fn get_user_profile(
         identity: Identity {
             address: canonical_address,
             delegated_from: sessions,
-            display_name: Some(alias),
+            display_name: wallet.or(Some(alias)),
         },
         achievements: achievement_names,
         channels: channels_data,

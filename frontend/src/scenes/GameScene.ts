@@ -5,7 +5,7 @@ import {
   DISTANCE_SCORE_MULTIPLIER, DOUBLE_JUMP_UNLOCK_DISTANCE,
   MILESTONE_SCORE_BONUS,
 } from "../config";
-import { PlayerData } from "../api";
+import { getPlayerIdentifier, PlayerData, shortenWalletAddress } from "../api";
 import { Player } from "../objects/Player";
 import { PlatformManager } from "../objects/Platform";
 import { ObstacleFactory, ObstacleSprite } from "../objects/Obstacle";
@@ -37,6 +37,7 @@ export class GameScene extends Phaser.Scene {
   private speedBoostActive = false;
   private speedBoostText!: Phaser.GameObjects.Text;
   private magnetText!: Phaser.GameObjects.Text;
+  private walletText!: Phaser.GameObjects.Text;
   private distance = 0;
   private score = 0;
   private orbsCollected = 0;
@@ -137,7 +138,7 @@ export class GameScene extends Phaser.Scene {
     this.zoneManager = new ZoneManager();
 
     this.achievements = new AchievementManager();
-    this.achievements.init(this.playerData.id);
+    this.achievements.init(this.playerData.id, this.playerData.network_id);
 
     this.player = new Player(this, this.characterId);
     this.player.startRun();
@@ -216,6 +217,18 @@ export class GameScene extends Phaser.Scene {
       stroke: "#330033",
       strokeThickness: 2,
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(100);
+
+    const playerIdentifier = getPlayerIdentifier(this.playerData);
+    const walletLabel = this.playerData.wallet_address
+      ? shortenWalletAddress(playerIdentifier)
+      : playerIdentifier;
+    this.walletText = this.add.text(10, 12, walletLabel, {
+      fontFamily: '"Press Start 2P"',
+      fontSize: "8px",
+      color: "#ffdd44",
+      stroke: "#000000",
+      strokeThickness: 3,
+    }).setOrigin(0, 0).setScrollFactor(0).setDepth(200);
 
     this.toastText = this.add.text(GAME_WIDTH / 2, 60, "", {
       fontFamily: '"Press Start 2P"', fontSize: "9px", color: "#ffdd44",
@@ -829,8 +842,9 @@ export class GameScene extends Phaser.Scene {
       damageTaken: this.player.damageTaken,
     };
 
-    const prev = loadProgress();
-    saveProgress(updateProgress(prev, runStats));
+    const netId = this.playerData.network_id;
+    const prev = loadProgress(netId);
+    saveProgress(updateProgress(prev, runStats), netId);
     addOrbs(this.orbsCollected);
 
     const newAchievements = await this.achievements.checkAll(runStats);

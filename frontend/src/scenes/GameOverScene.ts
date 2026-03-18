@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
-import { api, PlayerData, RunData } from "../api";
+import { api, formatScoreIdentifier, PlayerData, RunData } from "../api";
 import { getCharacter } from "../systems/CharacterRegistry";
 
 interface GameOverData {
@@ -89,7 +89,7 @@ export class GameOverScene extends Phaser.Scene {
 
     // Top scores
     try {
-      const top = await api.getTopScores(5);
+      const top = await api.getTopScores(5, d.player.network_id);
 
       this.add.text(cx, dynamicY, "LEADERBOARD", {
         fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#8866aa",
@@ -97,7 +97,8 @@ export class GameOverScene extends Phaser.Scene {
 
       top.forEach((entry, i) => {
         const color = entry.player_id === d.player.id ? "#c850c0" : "#6666aa";
-        this.add.text(cx, dynamicY + 16 + i * 13, `${entry.rank}. ${entry.alias} - ${entry.score}`, {
+        const displayName = formatScoreIdentifier(entry, 22);
+        this.add.text(cx, dynamicY + 16 + i * 13, `${entry.rank}. ${displayName} - ${entry.score}`, {
           fontFamily: '"Press Start 2P"', fontSize: "7px", color,
         }).setOrigin(0.5);
       });
@@ -105,47 +106,50 @@ export class GameOverScene extends Phaser.Scene {
       // offline
     }
 
-    // Buttons
-    const retryY = cy + 155;
-    const retryBg = this.add.rectangle(cx - 70, retryY, 120, 30, 0x7b2d8e).setInteractive({ useHandCursor: true });
-    this.add.text(cx - 70, retryY, "RETRY", {
-      fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#ffffff",
-    }).setOrigin(0.5);
+    // Buttons — uniform 2-column grid
+    const btnW = 130;
+    const btnH = 34;
+    const btnGap = 38;
+    const btnFont = "10px";
+    const colL = cx - 70;
+    const colR = cx + 70;
+    const row1Y = cy + 140;
+    const row2Y = row1Y + btnGap;
 
+    const retryBg = this.add.rectangle(colL, row1Y, btnW, btnH, 0x7b2d8e).setInteractive({ useHandCursor: true });
+    this.add.text(colL, row1Y, "RETRY", {
+      fontFamily: '"Press Start 2P"', fontSize: btnFont, color: "#ffffff",
+    }).setOrigin(0.5);
     retryBg.on("pointerover", () => retryBg.setFillStyle(0xc850c0));
     retryBg.on("pointerout", () => retryBg.setFillStyle(0x7b2d8e));
     retryBg.on("pointerdown", () => {
       this.scene.start("GameScene", { player: d.player, characterId: d.characterId });
     });
 
-    const lbBg = this.add.rectangle(cx + 70, retryY, 120, 30, 0x2a2a5e).setInteractive({ useHandCursor: true });
-    this.add.text(cx + 70, retryY, "SCORES", {
-      fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#aaaacc",
+    const storeBg = this.add.rectangle(colR, row1Y, btnW, btnH, 0x2a2a3e).setInteractive({ useHandCursor: true });
+    this.add.text(colR, row1Y, "STORE", {
+      fontFamily: '"Press Start 2P"', fontSize: btnFont, color: "#e878e0",
     }).setOrigin(0.5);
-
-    lbBg.on("pointerover", () => lbBg.setFillStyle(0x4a4a7e));
-    lbBg.on("pointerout", () => lbBg.setFillStyle(0x2a2a5e));
-    lbBg.on("pointerdown", () => {
-      this.scene.start("LeaderboardScene", { player: d.player });
-    });
-
-    const row2Y = retryY + 38;
-    const charBg = this.add.rectangle(cx - 55, row2Y, 100, 26, 0x2a2a3e).setInteractive({ useHandCursor: true });
-    this.add.text(cx - 55, row2Y, "STORE", {
-      fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#e878e0",
-    }).setOrigin(0.5);
-
-    charBg.on("pointerover", () => charBg.setFillStyle(0x4a4a5e));
-    charBg.on("pointerout", () => charBg.setFillStyle(0x2a2a3e));
-    charBg.on("pointerdown", () => {
+    storeBg.on("pointerover", () => storeBg.setFillStyle(0x4a4a5e));
+    storeBg.on("pointerout", () => storeBg.setFillStyle(0x2a2a3e));
+    storeBg.on("pointerdown", () => {
       this.scene.start("CharacterSelectScene", { player: d.player });
     });
 
-    const achBg = this.add.rectangle(cx + 55, row2Y, 100, 26, 0x2a2a3e).setInteractive({ useHandCursor: true });
-    this.add.text(cx + 55, row2Y, "ACHIEVE", {
-      fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#ffdd44",
+    const scoresBg = this.add.rectangle(colL, row2Y, btnW, btnH, 0x2a2a3e).setInteractive({ useHandCursor: true });
+    this.add.text(colL, row2Y, "SCORES", {
+      fontFamily: '"Press Start 2P"', fontSize: btnFont, color: "#aaaacc",
     }).setOrigin(0.5);
+    scoresBg.on("pointerover", () => scoresBg.setFillStyle(0x4a4a5e));
+    scoresBg.on("pointerout", () => scoresBg.setFillStyle(0x2a2a3e));
+    scoresBg.on("pointerdown", () => {
+      this.scene.start("LeaderboardScene", { player: d.player });
+    });
 
+    const achBg = this.add.rectangle(colR, row2Y, btnW, btnH, 0x2a2a3e).setInteractive({ useHandCursor: true });
+    this.add.text(colR, row2Y, "ACHIEVEMENTS", {
+      fontFamily: '"Press Start 2P"', fontSize: btnFont, color: "#ffdd44",
+    }).setOrigin(0.5);
     achBg.on("pointerover", () => achBg.setFillStyle(0x4a4a5e));
     achBg.on("pointerout", () => achBg.setFillStyle(0x2a2a3e));
     achBg.on("pointerdown", () => {

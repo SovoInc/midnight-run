@@ -12,7 +12,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 async fn public_list(db: web::Data<Db>, query: web::Query<Prc1ListQuery>) -> HttpResponse {
-    let total = db.total_players().unwrap_or(0);
+    let network_id = query.network_id.as_deref().unwrap_or("preview");
+    let total = db.total_players(network_id).unwrap_or(0);
 
     let mut achievements: Vec<Prc1Achievement> = ACHIEVEMENTS.iter().filter(|a| {
         if let Some(ref cat) = query.category {
@@ -23,7 +24,7 @@ async fn public_list(db: web::Data<Db>, query: web::Query<Prc1ListQuery>) -> Htt
         }
         true
     }).map(|a| {
-        let count = db.achievement_unlock_count(a.name).unwrap_or(0);
+        let count = db.achievement_unlock_count(a.name, network_id).unwrap_or(0);
         let pct = if total > 0 { Some((count as f64 / total as f64) * 100.0) } else { None };
         Prc1Achievement {
             name: a.name.to_string(),
@@ -59,7 +60,7 @@ async fn wallet_achievements(db: web::Data<Db>, path: web::Path<String>) -> Http
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
 
-    let (player_id, alias, _wallet_addr, _sessions) = resolved;
+    let (player_id, alias, wallet_addr, _sessions) = resolved;
 
     let unlocked: std::collections::HashSet<String> = db.player_achievements(player_id)
         .unwrap_or_default()
@@ -107,7 +108,7 @@ async fn wallet_achievements(db: web::Data<Db>, path: web::Path<String>) -> Http
         caip2: "midnight:mainnet".into(),
         time: now,
         wallet,
-        user_name: Some(alias),
+        user_name: wallet_addr.or(Some(alias)),
         completed: completed_count,
         achievements,
     })
