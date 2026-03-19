@@ -12,10 +12,11 @@ Implemented:
 - Menu login UX with manual connect and automatic reconnect on load
 - A distinct `RECONNECTING WALLET...` state during automatic reconnect
 - Legacy alias support kept on the backend for older records
+- Auth tokens issued on wallet connect, required on all mutating endpoints
+- Server-authoritative scoring, inventory, and achievement evaluation
 
 Not implemented:
 - Signed challenge / backend cryptographic proof of wallet ownership
-- Session tokens / cookies / JWTs
 - Wallet disconnect through the wallet extension itself
 - Multi-wallet selection UI beyond preferring Midnight Lace if present
 
@@ -47,37 +48,42 @@ The implemented flow is intentionally simple:
 
 This means the wallet address becomes the canonical player identifier for records, while the database keeps the numeric `player_id` as the relational key.
 
-## Files Added / Changed
+## Files Involved
 
 ### Frontend
 
-Added:
-- `frontend/src/midnight.ts`
-
-Changed:
-- `frontend/src/api.ts`
-- `frontend/src/scenes/MenuScene.ts`
-- `frontend/src/scenes/GameOverScene.ts`
-- `frontend/src/scenes/LeaderboardScene.ts`
-- `frontend/package.json`
-- `frontend/package-lock.json`
+| File | Role |
+|------|------|
+| `frontend/src/midnight.ts` | Wallet detection, connect, address retrieval |
+| `frontend/src/api.ts` | API client with auth token header injection |
+| `frontend/src/scenes/MenuScene.ts` | Login UX, token storage/restore, auto-reconnect |
+| `frontend/src/scenes/GameScene.ts` | Run session token fetch, raw data collection |
+| `frontend/src/scenes/GameOverScene.ts` | Submit run to server, display server-computed results |
+| `frontend/src/scenes/CharacterSelectScene.ts` | Fetch inventory from server on open |
+| `frontend/src/scenes/LeaderboardScene.ts` | Display wallet-preferring identities |
+| `frontend/src/systems/CharacterStore.ts` | Server-backed orb wallet and character unlocks |
+| `frontend/src/systems/BoostStore.ts` | Server-backed boost inventory |
+| `frontend/src/systems/AchievementManager.ts` | Load achievements for display (evaluation is server-side) |
 
 ### Backend
 
-Changed:
-- `server/src/models.rs`
-- `server/src/internal_api.rs`
-- `server/src/db.rs`
-- `server/src/achievements_api.rs`
-- `server/src/metrics_api.rs`
+| File | Role |
+|------|------|
+| `server/src/internal_api.rs` | All endpoints, auth validation helper |
+| `server/src/db.rs` | Schema, migrations, all DB methods |
+| `server/src/models.rs` | Request/response types |
+| `server/src/scoring.rs` | Score computation and run plausibility checks |
+| `server/src/achievement_eval.rs` | Server-side achievement evaluation |
+| `server/src/achievement_defs.rs` | Achievement metadata (names, descriptions, scores) |
+| `server/src/achievements_api.rs` | PRC-1 achievement endpoints |
+| `server/src/metrics_api.rs` | PRC-6 metrics/channel endpoints |
 
 ### Docs
 
-Changed:
-- `README.md`
-
-Added:
-- `MIDNIGHT_LOGIN_INTEGRATION.md`
+| File | Role |
+|------|------|
+| `MIDNIGHT_LOGIN_INTEGRATION.md` | This guide |
+| `CLAUDE.md` | Full server architecture reference |
 
 ## Frontend Integration
 
@@ -347,23 +353,34 @@ If another game uses a different frontend dev server, this proxy behavior must b
 
 Minimum reusable pieces:
 
-1. `frontend/src/midnight.ts`
-2. Wallet registration client method in `frontend/src/api.ts`
-3. Backend `POST /api/wallet` route
-4. Backend `upsert_wallet()` DB function
-5. Player display logic that prefers `wallet_address`
-6. Menu/login UX changes
+1. `frontend/src/midnight.ts` — wallet detection, connect, address retrieval
+2. Wallet registration + auth token client method in `frontend/src/api.ts`
+3. Backend `POST /api/wallet` route with auth token issuance
+4. Backend `upsert_wallet()` and `create_auth_token()` DB functions
+5. Auth token validation helper for protected endpoints
+6. Player display logic that prefers `wallet_address`
+7. Menu/login UX changes with token storage and restore
 
-### Suggested order for another game
+If the game has scoring or economy:
+
+8. Run session token flow (`POST /api/session/start` + `POST /api/run`)
+9. Server-side score computation and validation
+10. Server-side inventory table and purchase/consume endpoints
+11. Server-side achievement evaluation
+
+### Suggested implementation order
 
 1. Add `@midnight-ntwrk/dapp-connector-api`
 2. Add wallet helper module
-3. Add backend `/api/wallet`
-4. Add DB upsert by wallet address
-5. Change frontend player bootstrap/login flow
-6. Change leaderboard / records display to wallet-first
-7. Add auto-reconnect
-8. Test with a real Midnight wallet extension
+3. Add backend `/api/wallet` with auth token issuance
+4. Add DB upsert by wallet address + auth token table
+5. Add auth validation helper, protect all mutating endpoints
+6. Change frontend player bootstrap/login flow, store and send auth token
+7. Add auto-reconnect with token restore
+8. Move scoring to server (run sessions, validation, computation)
+9. Move inventory to server (currency, unlocks, consumables)
+10. Move achievement evaluation to server
+11. Test with a real Midnight wallet extension
 
 ## Recommended Adaptation Checklist
 
@@ -376,6 +393,9 @@ For another game, check these before shipping:
 - Does the frontend have a single login screen or several entry points?
 - Is the game expected to support mobile web?
 - Is the desired Midnight network `preview`, `preprod`, or another env-specific value?
+- Does the game have server-side score computation, or does it trust the client?
+- Does the game have purchasable items or currency? If so, is the server authoritative?
+- Are all mutating API endpoints protected by auth tokens?
 
 ## Verification Performed In This Repo
 
@@ -391,20 +411,81 @@ Manual verification still needed outside this environment:
 - Real account reconnect behavior across refreshes
 - Real shielded address registration on selected network
 
-## Security Note
+## Security: Auth Tokens
 
-This implementation is identity-by-wallet-address after browser wallet connect, not full cryptographic backend authentication.
+### How it works
 
-That means:
-- The browser wallet is still the source of the address used to register the player
-- The backend does not yet verify a signed challenge proving key ownership
-- This is acceptable for a low-friction game login flow, but it is not strong auth
+The wallet connect endpoint (`POST /api/wallet`) returns a UUID `auth_token` alongside the player record. The frontend should:
 
-If another game needs stronger guarantees, add:
-- server-generated nonce/challenge
-- wallet signature over that challenge
-- backend verification using Midnight official verification primitives
-- session issuance after verification
+1. Store the token (e.g. `localStorage`)
+2. Send it as `Authorization: Bearer <token>` on every API request
+3. Restore it on page load alongside the saved player data
+
+The backend should:
+
+1. Generate the token on wallet registration/login
+2. Store it in an `auth_tokens` table keyed by `player_id`
+3. Validate the token on every mutating endpoint
+4. Reject requests where the token's `player_id` does not match the request body's `player_id`
+
+Public read endpoints (leaderboard, top scores, achievement lists) can remain open.
+
+This prevents cross-player impersonation — a token for player A cannot modify player B's inventory or submit runs on their behalf.
+
+### What auth tokens do NOT cover
+
+The backend does not verify a signed challenge proving wallet key ownership. Anyone who can call `POST /api/wallet` with a wallet address gets a token for that address.
+
+This is acceptable for a low-friction game login flow. If your game needs stronger guarantees, add:
+- Server-generated nonce/challenge
+- Wallet signature over that challenge
+- Backend verification using Midnight verification primitives
+- Session issuance only after verification
+
+## Server-Authoritative Game State
+
+### Why
+
+If the client computes scores and manages inventory locally, anyone can POST fake scores or grant themselves unlimited orbs. The server must be the source of truth for anything that appears on a leaderboard or costs currency.
+
+### Run sessions
+
+Issue a one-time session token at run start. On death, the client submits raw inputs (not a computed score) with this token. The server should:
+
+1. Validate the token hasn't been reused and belongs to the authenticated player
+2. Check plausibility — duration vs wall-clock elapsed time, distance vs max theoretical speed, rate caps on actions like dashes and near misses
+3. Compute the score deterministically from the raw inputs
+4. Credit earned currency to the player's inventory
+5. Evaluate achievements against cumulative DB stats (query after inserting the score row so the current run is included)
+6. Return the authoritative score, currency balance, and newly unlocked achievements
+
+The client can still show a HUD score estimate during gameplay for responsiveness. The game over screen should display the server-computed values.
+
+### Server-side inventory
+
+Store currency balance, unlocked items, and consumable counts in the database. The client should:
+
+- Fetch inventory from the server when entering the store
+- Send purchase/consume requests to the server (never deduct locally)
+- Update its in-memory cache from the server response
+
+Item costs must be defined server-side. If the client defines a different price than the server, the server's price wins.
+
+### Keeping definitions in sync
+
+If your game has achievements, they will exist in three places:
+
+1. Server evaluation logic (which achievements to grant based on run stats)
+2. Server metadata (names, descriptions, scores for PRC endpoints)
+3. Client display definitions (names, hints, progress bars)
+
+Keep these in sync. A mismatch means the client shows progress for an achievement the server will never grant, or vice versa.
+
+Same applies to item costs and boost definitions — define them server-side as the authority, and keep client-side labels consistent.
+
+### What stays in localStorage
+
+Only cosmetic preferences (e.g. selected character) and offline caches belong in localStorage. The server should never trust localStorage-derived values for scoring, currency, or ownership.
 
 ## Known Constraint About Signed Challenges
 
@@ -423,7 +504,11 @@ If the other game wants the same behavior with minimal risk, reuse this exact de
 - Public player identity: shielded wallet address
 - Backend relational key: numeric `player_id`
 - Browser login: Midnight wallet connect
-- Reconnect: automatic on menu load
+- Auth: UUID token issued on wallet connect, sent as `Authorization: Bearer <token>`
+- Reconnect: automatic on menu load, restore token from localStorage
 - Display label: `wallet_address` if present, alias otherwise
 - Network: env-configured, default `preview`
+- Scoring: server computes from raw inputs, client shows HUD estimate during play
+- Economy: server stores balances, validates purchases, credits currency on run completion
+- Achievements: server evaluates after score insertion, returns newly unlocked in run response
 
