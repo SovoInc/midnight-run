@@ -339,6 +339,29 @@ Observed failure mode:
 Fix:
 - Restart the Rust server after changing backend routes
 
+### Async session tokens and game timers
+
+If the game creates a run session token asynchronously (fire-and-forget in the game scene's `create()`), the server's `created_at` timestamp can lag behind the game engine's internal timer by several seconds due to network round-trip. This means the client's reported `duration_secs` can exceed the server's `session_elapsed` calculation.
+
+Use a generous tolerance (10+ seconds) on the duration-vs-session-elapsed check, or await the session token before starting the game timer. The other plausibility checks (max distance vs speed, action rate caps) are more reliable anti-cheat signals than timing precision.
+
+### Wallet network migration
+
+If a player connects with a wallet that was previously registered on a different network, the backend should update the player's `network_id` rather than creating a duplicate row. Query by `wallet_address` alone (not `wallet_address + network_id`) when looking up existing players.
+
+### Auto-connect should respect logout
+
+If auto-connect fires on every page load, the wallet extension popup will appear even after the user explicitly logged out. Gate auto-connect on having a saved player session in localStorage. If the user logged out (clearing `mr_player`), skip auto-connect entirely.
+
+### Clear all client state on logout
+
+On logout, clear:
+- `mr_player` and `mr_auth_token` from localStorage
+- In-memory auth token (so API calls stop authenticating)
+- In-memory inventory cache (so a different player logging in doesn't see stale orbs/characters)
+
+If any in-memory state survives logout, the next player to log in on the same browser session will see the previous player's cached data until a server fetch overwrites it.
+
 ### Vite proxy setup
 
 Current dev proxy already supports the API paths needed:
@@ -505,7 +528,7 @@ If the other game wants the same behavior with minimal risk, reuse this exact de
 - Backend relational key: numeric `player_id`
 - Browser login: Midnight wallet connect
 - Auth: UUID token issued on wallet connect, sent as `Authorization: Bearer <token>`
-- Reconnect: automatic on menu load, restore token from localStorage
+- Reconnect: automatic on menu load only if saved session exists (skip after logout)
 - Display label: `wallet_address` if present, alias otherwise
 - Network: env-configured, default `preview`
 - Scoring: server computes from raw inputs, client shows HUD estimate during play
