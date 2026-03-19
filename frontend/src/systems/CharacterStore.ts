@@ -77,6 +77,16 @@ export function updateCachedBalance(newBalance: number) {
   cachedInventory.orb_balance = newBalance;
 }
 
+export function resetInventory() {
+  _playerId = 0;
+  cachedInventory = {
+    orb_balance: 0,
+    unlocked_characters: ["default"],
+    boost_speed: 0,
+    boost_magnet: 0,
+  };
+}
+
 export function getSelected(): string {
   try {
     return localStorage.getItem(selectedKey()) || "default";

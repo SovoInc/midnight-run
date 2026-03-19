@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
 import { api, getPlayerIdentifier, PlayerData, setAuthToken, shortenWalletAddress } from "../api";
+import { resetInventory } from "../systems/CharacterStore";
 import { drawMoon } from "../systems/ParallaxBackground";
 import { getCharacter } from "../systems/CharacterRegistry";
 import { getSelected } from "../systems/CharacterStore";
@@ -263,9 +264,13 @@ export class MenuScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanup());
 
     this.refreshWalletUi();
-    this.time.delayedCall(0, () => {
-      void this.autoConnectWallet();
-    });
+
+    // Auto-connect only if the user has a saved session (didn't logout)
+    if (this.playerData) {
+      this.time.delayedCall(0, () => {
+        void this.autoConnectWallet();
+      });
+    }
   }
 
   update(_time: number, delta: number) {
@@ -371,10 +376,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private async autoConnectWallet() {
-    if (this.hasAttemptedAutoConnect) {
-      return;
-    }
-
+    if (this.hasAttemptedAutoConnect) return;
     this.hasAttemptedAutoConnect = true;
     this.isAutoConnecting = true;
     this.refreshWalletUi();
@@ -406,11 +408,7 @@ export class MenuScene extends Phaser.Scene {
       localStorage.setItem("mr_player", JSON.stringify(player));
       this.refreshWalletUi();
     } catch (error) {
-      if (isAutoConnect) {
-        if (!this.playerData) {
-          this.errorText.setText("");
-        }
-      } else {
+      if (!isAutoConnect) {
         this.errorText.setText(getMidnightWalletError(error));
       }
       console.error(error);
@@ -425,6 +423,7 @@ export class MenuScene extends Phaser.Scene {
     localStorage.removeItem("mr_player");
     localStorage.removeItem("mr_auth_token");
     setAuthToken("");
+    resetInventory();
     this.errorText.setText("");
     this.refreshWalletUi();
   }
