@@ -1,6 +1,4 @@
-import { spendOrbs } from "./CharacterStore";
-
-const BOOSTS_KEY = "mr_boosts";
+import { getCachedInventory, purchaseBoost as serverPurchaseBoost, consumeBoost as serverConsumeBoost } from "./CharacterStore";
 
 export interface BoostInventory {
   speed_boost: number;
@@ -14,36 +12,18 @@ export const BOOST_DEFS: { id: BoostId; name: string; cost: number; description:
   { id: "orb_magnet", name: "MAGNET", cost: 75, description: "Orbs gravitate toward you for 60s" },
 ];
 
-function defaultInventory(): BoostInventory {
-  return { speed_boost: 0, orb_magnet: 0 };
-}
-
 export function getBoostInventory(): BoostInventory {
-  try {
-    const raw = localStorage.getItem(BOOSTS_KEY);
-    if (raw) return { ...defaultInventory(), ...JSON.parse(raw) };
-  } catch { /* corrupt */ }
-  return defaultInventory();
+  const inv = getCachedInventory();
+  return {
+    speed_boost: inv.boost_speed,
+    orb_magnet: inv.boost_magnet,
+  };
 }
 
-function saveInventory(inv: BoostInventory) {
-  localStorage.setItem(BOOSTS_KEY, JSON.stringify(inv));
+export async function buyBoost(id: BoostId): Promise<boolean> {
+  return serverPurchaseBoost(id);
 }
 
-export function buyBoost(id: BoostId): boolean {
-  const def = BOOST_DEFS.find((b) => b.id === id);
-  if (!def) return false;
-  if (!spendOrbs(def.cost)) return false;
-  const inv = getBoostInventory();
-  inv[id]++;
-  saveInventory(inv);
-  return true;
-}
-
-export function consumeBoost(id: BoostId): boolean {
-  const inv = getBoostInventory();
-  if (inv[id] <= 0) return false;
-  inv[id]--;
-  saveInventory(inv);
-  return true;
+export async function consumeBoost(id: BoostId): Promise<boolean> {
+  return serverConsumeBoost(id);
 }

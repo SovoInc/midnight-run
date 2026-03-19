@@ -5,6 +5,7 @@ export interface PlayerData {
   alias: string;
   wallet_address: string | null;
   network_id: string;
+  auth_token?: string;
 }
 
 export interface ScoreEntry {
@@ -27,6 +28,35 @@ export interface RunData {
   duration_secs: number;
 }
 
+export interface RunSubmission {
+  player_id: number;
+  session_token: string;
+  raw_distance: number;
+  orbs_collected: number;
+  near_misses: number;
+  dashes_used: number;
+  walls_broken: number;
+  duration_secs: number;
+  reached_max_speed: boolean;
+  damage_taken: boolean;
+}
+
+export interface RunResult {
+  score_id: number;
+  score: number;
+  distance: number;
+  orb_balance: number;
+  achievements_unlocked: string[];
+  achievements_display: string[];
+}
+
+export interface InventoryData {
+  orb_balance: number;
+  unlocked_characters: string[];
+  boost_speed: number;
+  boost_magnet: number;
+}
+
 export interface AchievementEntry {
   achievement_key: string;
   unlocked_at: string;
@@ -45,10 +75,22 @@ export interface PlayerStatsData {
   max_speed_reached: boolean;
 }
 
+let _authToken = "";
+
+export function setAuthToken(token: string) {
+  _authToken = token;
+}
+
+function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (_authToken) h["Authorization"] = `Bearer ${_authToken}`;
+  return h;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -56,7 +98,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const h: Record<string, string> = {};
+  if (_authToken) h["Authorization"] = `Bearer ${_authToken}`;
+  const res = await fetch(`${BASE}${path}`, { headers: h });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -96,6 +140,11 @@ export const api = {
   registerWallet: (walletAddress: string, networkId: string) =>
     post<PlayerData>("/api/wallet", { wallet_address: walletAddress, network_id: networkId }),
 
+  startSession: (playerId: number) =>
+    post<{ token: string }>("/api/session/start", { player_id: playerId }),
+
+  submitRun: (data: RunSubmission) => post<RunResult>("/api/run", data),
+
   submitScore: (data: RunData) => post<{ id: number }>("/api/scores", data),
 
   getTopScores: (limit = 20, networkId?: string) =>
@@ -104,15 +153,21 @@ export const api = {
   getPlayerScores: (playerId: number) =>
     get<ScoreEntry[]>(`/api/scores/player/${playerId}`),
 
-  unlockAchievement: (playerId: number, achievementKey: string) =>
-    post<{ status: string }>("/api/achievements", {
-      player_id: playerId,
-      achievement_key: achievementKey,
-    }),
-
   getPlayerAchievements: (playerId: number) =>
     get<AchievementEntry[]>(`/api/achievements/${playerId}`),
 
   getPlayerStats: (playerId: number) =>
     get<PlayerStatsData>(`/api/stats/player/${playerId}`),
+
+  getInventory: (playerId: number) =>
+    get<InventoryData>(`/api/inventory?player_id=${playerId}`),
+
+  purchaseCharacter: (playerId: number, characterId: string) =>
+    post<InventoryData>("/api/inventory/purchase-character", { player_id: playerId, character_id: characterId }),
+
+  purchaseBoost: (playerId: number, boostId: string) =>
+    post<InventoryData>("/api/inventory/purchase-boost", { player_id: playerId, boost_id: boostId }),
+
+  consumeBoost: (playerId: number, boostId: string) =>
+    post<InventoryData>("/api/inventory/consume-boost", { player_id: playerId, boost_id: boostId }),
 };

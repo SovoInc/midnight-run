@@ -7,3 +7,5 @@ server/*.db
 server/*.db-shm
 server/*.db-wal
 .DS_Store
+frontend/spec/states
+frontend/spec/MidnightRunner_TTrace_1773543527.bin

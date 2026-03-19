@@ -37,6 +37,66 @@ pub struct ScoreSubmission {
     pub duration_secs: f64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SessionStartRequest {
+    pub player_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunSubmission {
+    pub player_id: i64,
+    pub session_token: String,
+    pub raw_distance: f64,
+    pub orbs_collected: i64,
+    pub near_misses: i64,
+    pub dashes_used: i64,
+    pub walls_broken: i64,
+    pub duration_secs: f64,
+    pub reached_max_speed: bool,
+    pub damage_taken: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RunResult {
+    pub score_id: i64,
+    pub score: i64,
+    pub distance: i64,
+    pub orb_balance: i64,
+    pub achievements_unlocked: Vec<String>,
+    pub achievements_display: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InventoryResponse {
+    pub orb_balance: i64,
+    pub unlocked_characters: Vec<String>,
+    pub boost_speed: i64,
+    pub boost_magnet: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PurchaseCharacterRequest {
+    pub player_id: i64,
+    pub character_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PurchaseBoostRequest {
+    pub player_id: i64,
+    pub boost_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConsumeBoostRequest {
+    pub player_id: i64,
+    pub boost_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InventoryQuery {
+    pub player_id: Option<i64>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ScoreEntry {
     pub rank: i64,

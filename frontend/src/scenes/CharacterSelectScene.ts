@@ -4,10 +4,10 @@ import { CHARACTERS, CharacterDef } from "../systems/CharacterRegistry";
 import {
   getOrbWallet,
   getUnlocked,
-  unlockCharacter,
-  spendOrbs,
+  purchaseCharacter,
   getSelected,
   setSelected,
+  initInventory,
 } from "../systems/CharacterStore";
 import {
   getBoostInventory,
@@ -52,7 +52,10 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.playerData = data.player;
   }
 
-  create() {
+  async create() {
+    // Load inventory from server before rendering
+    await initInventory(this.playerData.id);
+
     this.cards = [];
     this.selectedId = getSelected();
     const cx = GAME_WIDTH / 2;
@@ -132,11 +135,11 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     startBg.on("pointerover", () => startBg.setFillStyle(0xc850c0));
     startBg.on("pointerout", () => startBg.setFillStyle(0x7b2d8e));
-    startBg.on("pointerdown", () => {
+    startBg.on("pointerdown", async () => {
       setSelected(this.selectedId);
       const boosts: string[] = [];
       for (const id of this.activeBoosts) {
-        if (consumeBoost(id)) boosts.push(id);
+        if (await consumeBoost(id)) boosts.push(id);
       }
       this.scene.start("GameScene", {
         player: this.playerData,
@@ -279,7 +282,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.cards.push(card);
   }
 
-  private onCardTap(char: CharacterDef) {
+  private async onCardTap(char: CharacterDef) {
     const unlocked = getUnlocked();
     const isUnlocked = unlocked.includes(char.id);
 
@@ -289,8 +292,8 @@ export class CharacterSelectScene extends Phaser.Scene {
       return;
     }
 
-    if (spendOrbs(char.cost)) {
-      unlockCharacter(char.id);
+    const success = await purchaseCharacter(char.id);
+    if (success) {
       this.selectedId = char.id;
       this.refreshCard(char.id);
       this.refreshWallet();
@@ -380,8 +383,8 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     buyBg.on("pointerover", () => buyBg.setFillStyle(0x4a4a5e));
     buyBg.on("pointerout", () => buyBg.setFillStyle(0x2a2a3e));
-    buyBg.on("pointerdown", () => {
-      if (buyBoost(id)) {
+    buyBg.on("pointerdown", async () => {
+      if (await buyBoost(id)) {
         this.refreshWallet();
         this.refreshBoostButtons();
       } else {

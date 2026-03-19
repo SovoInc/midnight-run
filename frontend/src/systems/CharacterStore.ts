@@ -1,55 +1,90 @@
-const WALLET_KEY = "mr_orb_wallet";
-const UNLOCKS_KEY = "mr_char_unlocks";
-const SELECTED_KEY = "mr_selected_char";
+import { api, InventoryData } from "../api";
+
+function selectedKey(): string {
+  return _playerId ? `mr_selected_char_${_playerId}` : "mr_selected_char";
+}
+
+// In-memory cache of server inventory, loaded on init
+let cachedInventory: InventoryData = {
+  orb_balance: 0,
+  unlocked_characters: ["default"],
+  boost_speed: 0,
+  boost_magnet: 0,
+};
+
+let _playerId = 0;
+
+export async function initInventory(playerId: number): Promise<InventoryData> {
+  _playerId = playerId;
+  try {
+    cachedInventory = await api.getInventory(playerId);
+    if (!cachedInventory.unlocked_characters.includes("default")) {
+      cachedInventory.unlocked_characters.unshift("default");
+    }
+  } catch {
+    // offline — keep defaults
+  }
+  return cachedInventory;
+}
+
+export function getCachedInventory(): InventoryData {
+  return cachedInventory;
+}
+
+export function getPlayerId(): number {
+  return _playerId;
+}
 
 export function getOrbWallet(): number {
-  try {
-    return Number(localStorage.getItem(WALLET_KEY)) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-export function addOrbs(n: number) {
-  const current = getOrbWallet();
-  localStorage.setItem(WALLET_KEY, String(current + n));
-}
-
-export function spendOrbs(n: number): boolean {
-  const current = getOrbWallet();
-  if (current < n) return false;
-  localStorage.setItem(WALLET_KEY, String(current - n));
-  return true;
+  return cachedInventory.orb_balance;
 }
 
 export function getUnlocked(): string[] {
-  try {
-    const raw = localStorage.getItem(UNLOCKS_KEY);
-    if (raw) {
-      const list = JSON.parse(raw) as string[];
-      if (!list.includes("default")) list.unshift("default");
-      return list;
-    }
-  } catch { /* corrupt */ }
-  return ["default"];
+  return cachedInventory.unlocked_characters;
 }
 
-export function unlockCharacter(id: string) {
-  const list = getUnlocked();
-  if (!list.includes(id)) {
-    list.push(id);
-    localStorage.setItem(UNLOCKS_KEY, JSON.stringify(list));
+export async function purchaseCharacter(characterId: string): Promise<boolean> {
+  try {
+    cachedInventory = await api.purchaseCharacter(_playerId, characterId);
+    if (!cachedInventory.unlocked_characters.includes("default")) {
+      cachedInventory.unlocked_characters.unshift("default");
+    }
+    return true;
+  } catch {
+    return false;
   }
+}
+
+export async function purchaseBoost(boostId: string): Promise<boolean> {
+  try {
+    cachedInventory = await api.purchaseBoost(_playerId, boostId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function consumeBoost(boostId: string): Promise<boolean> {
+  try {
+    cachedInventory = await api.consumeBoost(_playerId, boostId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function updateCachedBalance(newBalance: number) {
+  cachedInventory.orb_balance = newBalance;
 }
 
 export function getSelected(): string {
   try {
-    return localStorage.getItem(SELECTED_KEY) || "default";
+    return localStorage.getItem(selectedKey()) || "default";
   } catch {
     return "default";
   }
 }
 
 export function setSelected(id: string) {
-  localStorage.setItem(SELECTED_KEY, id);
+  localStorage.setItem(selectedKey(), id);
 }

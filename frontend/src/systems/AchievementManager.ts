@@ -59,25 +59,28 @@ export const DEFINITIONS: AchievementDef[] = [
   { key: "midnight_legend", name: "Midnight Legend", hint: "Reach the top 10 leaderboard", check: (r, c) => r.score > 0 && r.score >= c.topTenThreshold, progress: (p) => ({ current: p.bestScore, target: Math.max(p.bestScore, 1) }) },
 ];
 
-function progressKey(networkId?: string): string {
-  return networkId ? `mr_progress_${networkId}` : "mr_progress";
+function progressKey(playerId?: number, networkId?: string): string {
+  if (playerId && networkId) return `mr_progress_${playerId}_${networkId}`;
+  if (playerId) return `mr_progress_${playerId}`;
+  if (networkId) return `mr_progress_${networkId}`;
+  return "mr_progress";
 }
 
-export function loadProgress(networkId?: string): PlayerProgress {
+export function loadProgress(playerId?: number, networkId?: string): PlayerProgress {
   const defaults: PlayerProgress = {
     totalDistance: 0, totalOrbs: 0, totalDashes: 0, totalRuns: 0,
     bestScore: 0, bestDistance: 0, bestNearMisses: 0, bestWallsBroken: 0,
     maxSpeedReached: false, bestNoDamageDistance: 0,
   };
   try {
-    const raw = localStorage.getItem(progressKey(networkId));
+    const raw = localStorage.getItem(progressKey(playerId, networkId));
     if (raw) return { ...defaults, ...JSON.parse(raw) };
   } catch { /* corrupt data */ }
   return defaults;
 }
 
-export function saveProgress(p: PlayerProgress, networkId?: string) {
-  localStorage.setItem(progressKey(networkId), JSON.stringify(p));
+export function saveProgress(p: PlayerProgress, playerId?: number, networkId?: string) {
+  localStorage.setItem(progressKey(playerId, networkId), JSON.stringify(p));
 }
 
 export function updateProgress(prev: PlayerProgress, run: RunStats): PlayerProgress {
@@ -98,59 +101,17 @@ export function updateProgress(prev: PlayerProgress, run: RunStats): PlayerProgr
 
 export class AchievementManager {
   private unlocked: Set<string> = new Set();
-  private playerId = 0;
   private toastQueue: string[] = [];
-  private cumulative: CumulativeStats = {
-    totalDistance: 0, totalOrbs: 0, totalDashes: 0,
-    totalRuns: 0, bestScore: 0, topTenThreshold: 0,
-  };
 
   async init(playerId: number, networkId?: string) {
-    this.playerId = playerId;
     try {
       const existing = await api.getPlayerAchievements(playerId);
       for (const a of existing) this.unlocked.add(a.achievement_key);
-
-      const top = await api.getTopScores(10, networkId);
-      this.cumulative.topTenThreshold = top.length >= 10 ? top[top.length - 1].score : 0;
-
-      const playerScores = await api.getPlayerScores(playerId);
-      for (const s of playerScores) {
-        this.cumulative.totalDistance += s.distance;
-        this.cumulative.bestScore = Math.max(this.cumulative.bestScore, s.score);
-      }
-      this.cumulative.totalRuns = playerScores.length;
     } catch {
       // offline-ok
     }
-  }
-
-  updateCumulative(run: RunStats) {
-    this.cumulative.totalDistance += run.distance;
-    this.cumulative.totalOrbs += run.orbsCollected;
-    this.cumulative.totalDashes += run.dashesUsed;
-    this.cumulative.totalRuns++;
-    this.cumulative.bestScore = Math.max(this.cumulative.bestScore, run.score);
-  }
-
-  async checkAll(run: RunStats): Promise<string[]> {
-    this.updateCumulative(run);
-    const newUnlocks: string[] = [];
-
-    for (const def of DEFINITIONS) {
-      if (this.unlocked.has(def.key)) continue;
-      if (def.check(run, this.cumulative)) {
-        this.unlocked.add(def.key);
-        newUnlocks.push(def.name);
-        this.toastQueue.push(def.name);
-        try {
-          await api.unlockAchievement(this.playerId, def.key);
-        } catch {
-          // persist later
-        }
-      }
-    }
-    return newUnlocks;
+    // suppress unused warnings
+    void networkId;
   }
 
   popToast(): string | null {

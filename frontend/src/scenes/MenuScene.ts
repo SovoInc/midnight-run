@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
-import { api, getPlayerIdentifier, PlayerData, shortenWalletAddress } from "../api";
+import { api, getPlayerIdentifier, PlayerData, setAuthToken, shortenWalletAddress } from "../api";
 import { drawMoon } from "../systems/ParallaxBackground";
 import { getCharacter } from "../systems/CharacterRegistry";
 import { getSelected } from "../systems/CharacterStore";
@@ -293,9 +293,17 @@ export class MenuScene extends Phaser.Scene {
   private loadSavedPlayer(): PlayerData | null {
     try {
       const raw = localStorage.getItem("mr_player");
-      return raw ? JSON.parse(raw) as PlayerData : null;
+      if (!raw) return null;
+      const player = JSON.parse(raw) as PlayerData;
+      const savedToken = localStorage.getItem("mr_auth_token");
+      if (savedToken) {
+        setAuthToken(savedToken);
+        player.auth_token = savedToken;
+      }
+      return player;
     } catch {
       localStorage.removeItem("mr_player");
+      localStorage.removeItem("mr_auth_token");
       return null;
     }
   }
@@ -390,6 +398,10 @@ export class MenuScene extends Phaser.Scene {
     try {
       const { address } = await connectMidnightWallet();
       const player = await api.registerWallet(address, MIDNIGHT_NETWORK_ID);
+      if (player.auth_token) {
+        setAuthToken(player.auth_token);
+        localStorage.setItem("mr_auth_token", player.auth_token);
+      }
       this.playerData = player;
       localStorage.setItem("mr_player", JSON.stringify(player));
       this.refreshWalletUi();
@@ -411,6 +423,8 @@ export class MenuScene extends Phaser.Scene {
   private disconnectWallet() {
     this.playerData = null;
     localStorage.removeItem("mr_player");
+    localStorage.removeItem("mr_auth_token");
+    setAuthToken("");
     this.errorText.setText("");
     this.refreshWalletUi();
   }

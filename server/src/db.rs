@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::Mutex;
+use uuid::Uuid;
 
 pub struct Db {
     pub conn: Mutex<Connection>,
@@ -56,6 +57,27 @@ impl Db {
                 UNIQUE(player_id, achievement_key)
             );
 
+            CREATE TABLE IF NOT EXISTS player_inventory (
+                player_id INTEGER PRIMARY KEY REFERENCES players(id),
+                orb_balance INTEGER NOT NULL DEFAULT 0,
+                unlocked_characters TEXT NOT NULL DEFAULT '',
+                boost_speed INTEGER NOT NULL DEFAULT 0,
+                boost_magnet INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS auth_tokens (
+                token TEXT PRIMARY KEY,
+                player_id INTEGER NOT NULL REFERENCES players(id),
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS run_sessions (
+                token TEXT PRIMARY KEY,
+                player_id INTEGER NOT NULL REFERENCES players(id),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                used INTEGER NOT NULL DEFAULT 0
+            );
+
             CREATE INDEX IF NOT EXISTS idx_scores_ranking ON scores(score DESC);
             CREATE INDEX IF NOT EXISTS idx_scores_created ON scores(created_at);
             CREATE INDEX IF NOT EXISTS idx_scores_player ON scores(player_id);
@@ -95,7 +117,197 @@ impl Db {
             )?;
         }
 
+        // Migration: add raw_distance, damage_taken, reached_max_speed to scores
+        let has_raw_distance: bool = conn.prepare("SELECT raw_distance FROM scores LIMIT 0").is_ok();
+        if !has_raw_distance {
+            conn.execute_batch(
+                "ALTER TABLE scores ADD COLUMN raw_distance REAL NOT NULL DEFAULT 0;
+                 ALTER TABLE scores ADD COLUMN damage_taken INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE scores ADD COLUMN reached_max_speed INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+
         Ok(())
+    }
+
+    pub fn create_run_session(&self, player_id: i64) -> Result<String> {
+        let conn = self.conn.lock().unwrap();
+        let token = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO run_sessions (token, player_id) VALUES (?1, ?2)",
+            params![token, player_id],
+        )?;
+        Ok(token)
+    }
+
+    /// Atomically marks a run session as used. Returns (valid, created_at).
+    pub fn consume_run_session(&self, token: &str, player_id: i64) -> Result<(bool, String)> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT player_id, created_at, used FROM run_sessions WHERE token = ?1",
+            params![token],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?)),
+        );
+        match result {
+            Ok((pid, created_at, used)) => {
+                if pid != player_id || used != 0 {
+                    return Ok((false, String::new()));
+                }
+                conn.execute(
+                    "UPDATE run_sessions SET used = 1 WHERE token = ?1",
+                    params![token],
+                )?;
+                Ok((true, created_at))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok((false, String::new())),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Create an auth token for a player. Returns the token string.
+    pub fn create_auth_token(&self, player_id: i64) -> Result<String> {
+        let conn = self.conn.lock().unwrap();
+        let token = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO auth_tokens (token, player_id) VALUES (?1, ?2)",
+            params![token, player_id],
+        )?;
+        Ok(token)
+    }
+
+    /// Validate an auth token. Returns Some(player_id) if valid.
+    pub fn validate_auth_token(&self, token: &str) -> Result<Option<i64>> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT player_id FROM auth_tokens WHERE token = ?1",
+            params![token],
+            |r| r.get::<_, i64>(0),
+        );
+        match result {
+            Ok(pid) => Ok(Some(pid)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn delete_auth_tokens(&self, player_id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM auth_tokens WHERE player_id = ?1", params![player_id])?;
+        Ok(())
+    }
+
+    /// Ensure inventory row exists for player, return (orb_balance, unlocked_characters, boost_speed, boost_magnet)
+    pub fn get_inventory(&self, player_id: i64) -> Result<(i64, Vec<String>, i64, i64)> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO player_inventory (player_id) VALUES (?1)",
+            params![player_id],
+        )?;
+        let row = conn.query_row(
+            "SELECT orb_balance, unlocked_characters, boost_speed, boost_magnet FROM player_inventory WHERE player_id = ?1",
+            params![player_id],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?)),
+        )?;
+        let mut chars: Vec<String> = serde_json::from_str(&row.1).unwrap_or_default();
+        if !chars.contains(&"default".to_string()) {
+            chars.insert(0, "default".to_string());
+        }
+        Ok((row.0, chars, row.2, row.3))
+    }
+
+    /// Credit orbs to a player's balance. Returns new balance.
+    pub fn credit_orbs(&self, player_id: i64, amount: i64) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO player_inventory (player_id) VALUES (?1)",
+            params![player_id],
+        )?;
+        conn.execute(
+            "UPDATE player_inventory SET orb_balance = orb_balance + ?2 WHERE player_id = ?1",
+            params![player_id, amount],
+        )?;
+        let balance: i64 = conn.query_row(
+            "SELECT orb_balance FROM player_inventory WHERE player_id = ?1",
+            params![player_id], |r| r.get(0),
+        )?;
+        Ok(balance)
+    }
+
+    /// Purchase a character. Returns Ok(new_balance) or Err if insufficient orbs or already owned.
+    pub fn purchase_character(&self, player_id: i64, character_id: &str, cost: i64) -> Result<std::result::Result<i64, String>> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO player_inventory (player_id) VALUES (?1)",
+            params![player_id],
+        )?;
+        let (balance, chars_json): (i64, String) = conn.query_row(
+            "SELECT orb_balance, unlocked_characters FROM player_inventory WHERE player_id = ?1",
+            params![player_id], |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let mut chars: Vec<String> = serde_json::from_str(&chars_json).unwrap_or_else(|_| vec!["default".to_string()]);
+        if chars.contains(&character_id.to_string()) {
+            return Ok(Err("already_owned".to_string()));
+        }
+        if balance < cost {
+            return Ok(Err("insufficient_orbs".to_string()));
+        }
+        chars.push(character_id.to_string());
+        let new_json = serde_json::to_string(&chars).unwrap();
+        let new_balance = balance - cost;
+        conn.execute(
+            "UPDATE player_inventory SET orb_balance = ?2, unlocked_characters = ?3 WHERE player_id = ?1",
+            params![player_id, new_balance, new_json],
+        )?;
+        Ok(Ok(new_balance))
+    }
+
+    /// Purchase a boost. Returns Ok(new_balance) or Err if insufficient orbs.
+    pub fn purchase_boost(&self, player_id: i64, boost_id: &str, cost: i64) -> Result<std::result::Result<(i64, i64), String>> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO player_inventory (player_id) VALUES (?1)",
+            params![player_id],
+        )?;
+        let col = match boost_id {
+            "speed_boost" => "boost_speed",
+            "orb_magnet" => "boost_magnet",
+            _ => return Ok(Err("unknown_boost".to_string())),
+        };
+        let balance: i64 = conn.query_row(
+            "SELECT orb_balance FROM player_inventory WHERE player_id = ?1",
+            params![player_id], |r| r.get(0),
+        )?;
+        if balance < cost {
+            return Ok(Err("insufficient_orbs".to_string()));
+        }
+        let new_balance = balance - cost;
+        let q = format!("UPDATE player_inventory SET orb_balance = ?2, {} = {} + 1 WHERE player_id = ?1", col, col);
+        conn.execute(&q, params![player_id, new_balance])?;
+        let count: i64 = conn.query_row(
+            &format!("SELECT {} FROM player_inventory WHERE player_id = ?1", col),
+            params![player_id], |r| r.get(0),
+        )?;
+        Ok(Ok((new_balance, count)))
+    }
+
+    /// Consume a boost. Returns Ok(new_count) or Err if none available.
+    pub fn consume_boost(&self, player_id: i64, boost_id: &str) -> Result<std::result::Result<i64, String>> {
+        let conn = self.conn.lock().unwrap();
+        let col = match boost_id {
+            "speed_boost" => "boost_speed",
+            "orb_magnet" => "boost_magnet",
+            _ => return Ok(Err("unknown_boost".to_string())),
+        };
+        let count: i64 = conn.query_row(
+            &format!("SELECT COALESCE({}, 0) FROM player_inventory WHERE player_id = ?1", col),
+            params![player_id], |r| r.get(0),
+        ).unwrap_or(0);
+        if count <= 0 {
+            return Ok(Err("no_boosts".to_string()));
+        }
+        let q = format!("UPDATE player_inventory SET {} = {} - 1 WHERE player_id = ?1", col, col);
+        conn.execute(&q, params![player_id])?;
+        Ok(Ok(count - 1))
     }
 
     pub fn upsert_alias(&self, alias: &str) -> Result<(i64, String, Option<String>)> {
@@ -132,11 +344,12 @@ impl Db {
     pub fn insert_score(
         &self, player_id: i64, score: i64, distance: i64,
         orbs: i64, near_misses: i64, dashes: i64, walls: i64, duration: f64,
+        raw_distance: f64, damage_taken: bool, reached_max_speed: bool,
     ) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO scores (player_id, score, distance, orbs_collected, near_misses, dashes_used, walls_broken, duration_secs) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-            params![player_id, score, distance, orbs, near_misses, dashes, walls, duration],
+            "INSERT INTO scores (player_id, score, distance, orbs_collected, near_misses, dashes_used, walls_broken, duration_secs, raw_distance, damage_taken, reached_max_speed) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            params![player_id, score, distance, orbs, near_misses, dashes, walls, duration, raw_distance, damage_taken as i64, reached_max_speed as i64],
         )?;
         Ok(conn.last_insert_rowid())
     }
@@ -401,14 +614,15 @@ impl Db {
                     row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?))
             })?;
 
-        // best no-damage distance: max distance among runs where damage_taken would be 0
-        // We don't store damage_taken directly, but we can approximate:
-        // a run with 0 near_misses and full health isn't trackable, so use a dedicated query
-        // For now, use the best distance from localStorage merge on the frontend side
-        let best_no_damage_distance: i64 = 0;
+        let best_no_damage_distance: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(distance), 0) FROM scores WHERE player_id = ?1 AND damage_taken = 0",
+            params![player_id], |r| r.get(0),
+        )?;
 
-        // max speed reached isn't stored in DB either
-        let max_speed_reached = false;
+        let max_speed_reached: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM scores WHERE player_id = ?1 AND reached_max_speed = 1)",
+            params![player_id], |r| r.get::<_, bool>(0),
+        )?;
 
         Ok((total_runs, total_distance, total_orbs, total_dashes,
             best_score, best_distance, best_near_misses, best_walls_broken,

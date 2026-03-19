@@ -1,9 +1,11 @@
 mod achievement_defs;
+mod achievement_eval;
 mod achievements_api;
 mod db;
 mod internal_api;
 mod metrics_api;
 mod models;
+mod scoring;
 
 use actix_files::Files;
 use actix_web::{web, App, HttpServer};

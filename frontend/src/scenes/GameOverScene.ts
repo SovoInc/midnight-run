@@ -1,19 +1,23 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "../config";
-import { api, formatScoreIdentifier, PlayerData, RunData } from "../api";
+import { api, formatScoreIdentifier, PlayerData, RunSubmission } from "../api";
 import { getCharacter } from "../systems/CharacterRegistry";
+import { updateCachedBalance } from "../systems/CharacterStore";
 
 interface GameOverData {
   player: PlayerData;
   characterId: string;
   score: number;
   distance: number;
+  rawDistance: number;
   orbsCollected: number;
   nearMisses: number;
   dashesUsed: number;
   wallsBroken: number;
   duration: number;
-  newAchievements: string[];
+  reachedMaxSpeed: boolean;
+  damageTaken: boolean;
+  sessionToken: string;
 }
 
 export class GameOverScene extends Phaser.Scene {
@@ -49,42 +53,70 @@ export class GameOverScene extends Phaser.Scene {
 
     const style = { fontFamily: '"Press Start 2P"', fontSize: "9px", color: "#aaaacc" };
 
-    this.add.text(cx, cy - 55, `SCORE: ${d.score}`, { ...style, color: "#ffffff", fontSize: "14px" }).setOrigin(0.5);
-    this.add.text(cx, cy - 30, `${d.distance}m  |  ${d.orbsCollected} orbs  |  ${d.nearMisses} near misses`, style).setOrigin(0.5);
-    this.add.text(cx, cy - 12, `${d.dashesUsed} dashes  |  ${d.wallsBroken} walls  |  ${d.duration.toFixed(1)}s`, style).setOrigin(0.5);
+    // Use client-computed values initially; overwrite with server values below
+    let displayScore = d.score;
+    let displayDistance = d.distance;
+    let newAchievements: string[] = [];
 
-    // Submit score
-    const runData: RunData = {
-      player_id: d.player.id,
-      score: d.score,
-      distance: d.distance,
-      orbs_collected: d.orbsCollected,
-      near_misses: d.nearMisses,
-      dashes_used: d.dashesUsed,
-      walls_broken: d.wallsBroken,
-      duration_secs: d.duration,
-    };
-
-    try {
-      await api.submitScore(runData);
-    } catch {
-      // offline-ok
+    // Submit run to server
+    if (d.sessionToken) {
+      const submission: RunSubmission = {
+        player_id: d.player.id,
+        session_token: d.sessionToken,
+        raw_distance: d.rawDistance,
+        orbs_collected: d.orbsCollected,
+        near_misses: d.nearMisses,
+        dashes_used: d.dashesUsed,
+        walls_broken: d.wallsBroken,
+        duration_secs: d.duration,
+        reached_max_speed: d.reachedMaxSpeed,
+        damage_taken: d.damageTaken,
+      };
+      try {
+        const result = await api.submitRun(submission);
+        displayScore = result.score;
+        displayDistance = result.distance;
+        newAchievements = result.achievements_display;
+        updateCachedBalance(result.orb_balance);
+      } catch {
+        // Offline or rejected — fall back to client values
+      }
+    } else {
+      // No session token (offline) — legacy submit
+      try {
+        await api.submitScore({
+          player_id: d.player.id,
+          score: d.score,
+          distance: d.distance,
+          orbs_collected: d.orbsCollected,
+          near_misses: d.nearMisses,
+          dashes_used: d.dashesUsed,
+          walls_broken: d.wallsBroken,
+          duration_secs: d.duration,
+        });
+      } catch {
+        // offline-ok
+      }
     }
+
+    this.add.text(cx, cy - 55, `SCORE: ${displayScore}`, { ...style, color: "#ffffff", fontSize: "14px" }).setOrigin(0.5);
+    this.add.text(cx, cy - 30, `${displayDistance}m  |  ${d.orbsCollected} orbs  |  ${d.nearMisses} near misses`, style).setOrigin(0.5);
+    this.add.text(cx, cy - 12, `${d.dashesUsed} dashes  |  ${d.wallsBroken} walls  |  ${d.duration.toFixed(1)}s`, style).setOrigin(0.5);
 
     // Show new achievements
     let dynamicY = cy + 15;
-    if (d.newAchievements.length > 0) {
+    if (newAchievements.length > 0) {
       this.add.text(cx, dynamicY, "ACHIEVEMENTS UNLOCKED:", {
         fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#ffdd44",
       }).setOrigin(0.5);
       dynamicY += 15;
 
-      d.newAchievements.forEach((name, i) => {
+      newAchievements.forEach((name, i) => {
         this.add.text(cx, dynamicY + i * 14, `★ ${name}`, {
           fontFamily: '"Press Start 2P"', fontSize: "7px", color: "#ffdd44",
         }).setOrigin(0.5);
       });
-      dynamicY += d.newAchievements.length * 14 + 15;
+      dynamicY += newAchievements.length * 14 + 15;
     }
 
     // Top scores

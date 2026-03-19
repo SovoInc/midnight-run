@@ -5,7 +5,7 @@ import {
   DISTANCE_SCORE_MULTIPLIER, DOUBLE_JUMP_UNLOCK_DISTANCE,
   MILESTONE_SCORE_BONUS,
 } from "../config";
-import { getPlayerIdentifier, PlayerData, shortenWalletAddress } from "../api";
+import { api, getPlayerIdentifier, PlayerData, shortenWalletAddress } from "../api";
 import { Player } from "../objects/Player";
 import { PlatformManager } from "../objects/Platform";
 import { ObstacleFactory, ObstacleSprite } from "../objects/Obstacle";
@@ -15,7 +15,6 @@ import { DifficultyManager, ObstacleType } from "../systems/DifficultyManager";
 import { AchievementManager, RunStats, loadProgress, saveProgress, updateProgress } from "../systems/AchievementManager";
 import { sfx } from "../systems/SfxManager";
 import { ZoneManager } from "../systems/ZoneManager";
-import { addOrbs } from "../systems/CharacterStore";
 import { getCharacter } from "../systems/CharacterRegistry";
 
 export class GameScene extends Phaser.Scene {
@@ -84,6 +83,7 @@ export class GameScene extends Phaser.Scene {
   private isMobile = false;
   private jumpBtn?: Phaser.GameObjects.Container;
   private dashBtn?: Phaser.GameObjects.Container;
+  private sessionToken = "";
   private paused = false;
   private pauseOverlay?: Phaser.GameObjects.Container;
   private escKey!: Phaser.Input.Keyboard.Key;
@@ -139,6 +139,10 @@ export class GameScene extends Phaser.Scene {
 
     this.achievements = new AchievementManager();
     this.achievements.init(this.playerData.id, this.playerData.network_id);
+
+    api.startSession(this.playerData.id)
+      .then(({ token }) => { this.sessionToken = token; })
+      .catch(() => { /* offline-ok, will fall back to legacy submit */ });
 
     this.player = new Player(this, this.characterId);
     this.player.startRun();
@@ -822,7 +826,7 @@ export class GameScene extends Phaser.Scene {
     if (toast) this.showToast("UNLOCKED: " + toast);
   }
 
-  private async die() {
+  private die() {
     if (this.isDead) return;
     this.isDead = true;
     this.player.die();
@@ -842,12 +846,10 @@ export class GameScene extends Phaser.Scene {
       damageTaken: this.player.damageTaken,
     };
 
+    const pid = this.playerData.id;
     const netId = this.playerData.network_id;
-    const prev = loadProgress(netId);
-    saveProgress(updateProgress(prev, runStats), netId);
-    addOrbs(this.orbsCollected);
-
-    const newAchievements = await this.achievements.checkAll(runStats);
+    const prev = loadProgress(pid, netId);
+    saveProgress(updateProgress(prev, runStats), pid, netId);
 
     this.time.delayedCall(1500, () => {
       // Snapshot the current frame as a texture for the game over background
@@ -861,12 +863,15 @@ export class GameScene extends Phaser.Scene {
           characterId: this.characterId,
           score: this.score,
           distance: displayDistance,
+          rawDistance: this.distance,
           orbsCollected: this.orbsCollected,
           nearMisses: this.nearMisses,
           dashesUsed: this.dashesUsed,
           wallsBroken: this.wallsBroken,
           duration,
-          newAchievements,
+          reachedMaxSpeed: this.difficulty.hasReachedMaxSpeed(),
+          damageTaken: this.player.damageTaken,
+          sessionToken: this.sessionToken,
         });
       });
     });
