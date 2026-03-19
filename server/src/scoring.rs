@@ -38,11 +38,13 @@ pub fn validate_run(
         return Err(ValidationError { reason: "negative values".into() });
     }
 
-    // Duration vs session elapsed time (reject if claimed > actual + 2s)
-    if duration_secs > session_elapsed_secs + 2.0 {
+    // Duration vs session elapsed time (reject if claimed > actual + 10s)
+    // Session token creation is async and may lag behind the game timer start,
+    // so the tolerance must account for network round-trip + Phaser timer drift
+    if duration_secs > session_elapsed_secs + 10.0 {
         return Err(ValidationError {
             reason: format!(
-                "duration {:.1}s exceeds session elapsed {:.1}s + 2s",
+                "duration {:.1}s exceeds session elapsed {:.1}s + 10s",
                 duration_secs, session_elapsed_secs
             ),
         });

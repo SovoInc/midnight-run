@@ -332,10 +332,15 @@ impl Db {
             "INSERT OR IGNORE INTO players (alias, wallet_address, network_id) VALUES (?1, ?2, ?3)",
             params![alias, wallet_address, network_id],
         )?;
-        let mut stmt = conn.prepare(
-            "SELECT id, alias, wallet_address, network_id FROM players WHERE wallet_address = ?1 AND network_id = ?2",
+        // Update network_id if wallet already existed with a different one
+        conn.execute(
+            "UPDATE players SET network_id = ?2 WHERE wallet_address = ?1",
+            params![wallet_address, network_id],
         )?;
-        let row = stmt.query_row(params![wallet_address, network_id], |row| {
+        let mut stmt = conn.prepare(
+            "SELECT id, alias, wallet_address, network_id FROM players WHERE wallet_address = ?1",
+        )?;
+        let row = stmt.query_row(params![wallet_address], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
         })?;
         Ok(row)
