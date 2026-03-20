@@ -1,7 +1,13 @@
 import "@midnight-ntwrk/dapp-connector-api";
 import type { ConnectedAPI, InitialAPI } from "@midnight-ntwrk/dapp-connector-api";
 
-export const MIDNIGHT_NETWORK_ID = import.meta.env.VITE_MIDNIGHT_NETWORK_ID ?? "preview";
+export const MIDNIGHT_NETWORKS = [
+  { id: "preview", label: "Preview", enabled: true },
+  { id: "preprod", label: "Preprod", enabled: true },
+  { id: "mainnet", label: "Mainnet", enabled: false },
+] as const;
+export type MidnightNetworkId = (typeof MIDNIGHT_NETWORKS)[number]["id"];
+export const DEFAULT_NETWORK: MidnightNetworkId = "preview";
 
 export interface MidnightWalletConnection {
   walletId: string;
@@ -25,7 +31,7 @@ export function hasMidnightWallet(): boolean {
   return listWallets().length > 0;
 }
 
-export async function connectMidnightWallet(): Promise<MidnightWalletConnection> {
+export async function connectMidnightWallet(networkId: MidnightNetworkId): Promise<MidnightWalletConnection> {
   const wallets = listWallets();
   if (wallets.length === 0) {
     throw new Error("No Midnight wallet found in this browser");
@@ -36,7 +42,7 @@ export async function connectMidnightWallet(): Promise<MidnightWalletConnection>
     throw new Error("No Midnight wallet found in this browser");
   }
 
-  const connectedApi = await selectedWallet.wallet.connect(MIDNIGHT_NETWORK_ID);
+  const connectedApi = await selectedWallet.wallet.connect(networkId);
 
   try {
     await connectedApi.hintUsage(["getShieldedAddresses", "getConnectionStatus", "getConfiguration"]);
@@ -48,8 +54,8 @@ export async function connectMidnightWallet(): Promise<MidnightWalletConnection>
   if (connectionStatus.status !== "connected") {
     throw new Error("Wallet connection is not active");
   }
-  if (connectionStatus.networkId !== MIDNIGHT_NETWORK_ID) {
-    throw new Error(`Wallet connected to ${connectionStatus.networkId} instead of ${MIDNIGHT_NETWORK_ID}`);
+  if (connectionStatus.networkId !== networkId) {
+    throw new Error(`Wallet connected to ${connectionStatus.networkId} instead of ${networkId}`);
   }
 
   const { shieldedAddress } = await connectedApi.getShieldedAddresses();
@@ -62,7 +68,7 @@ export async function connectMidnightWallet(): Promise<MidnightWalletConnection>
   };
 }
 
-export function getMidnightWalletError(error: unknown): string {
+export function getMidnightWalletError(error: unknown, networkId?: string): string {
   if (!hasMidnightWallet()) {
     return "install Midnight Lace to continue";
   }
@@ -77,7 +83,7 @@ export function getMidnightWalletError(error: unknown): string {
   }
 
   if (message.includes("network")) {
-    return `connect your wallet to ${MIDNIGHT_NETWORK_ID}`;
+    return `connect your wallet to ${networkId ?? "the selected network"}`;
   }
 
   return "wallet connection failed";

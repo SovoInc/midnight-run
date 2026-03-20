@@ -8,7 +8,9 @@ import { getSelected } from "../systems/CharacterStore";
 import {
   connectMidnightWallet,
   getMidnightWalletError,
-  MIDNIGHT_NETWORK_ID,
+  MIDNIGHT_NETWORKS,
+  DEFAULT_NETWORK,
+  type MidnightNetworkId,
 } from "../midnight";
 
 interface MenuBat {
@@ -36,6 +38,12 @@ export class MenuScene extends Phaser.Scene {
   private scoresLabel!: Phaser.GameObjects.Text;
   private logoutBg!: Phaser.GameObjects.Rectangle;
   private logoutLabel!: Phaser.GameObjects.Text;
+  private networkLabel!: Phaser.GameObjects.Text;
+  private networkLeftBg!: Phaser.GameObjects.Rectangle;
+  private networkLeftLabel!: Phaser.GameObjects.Text;
+  private networkRightBg!: Phaser.GameObjects.Rectangle;
+  private networkRightLabel!: Phaser.GameObjects.Text;
+  private selectedNetworkIndex = 0;
   private isConnecting = false;
   private hasAttemptedAutoConnect = false;
   private isAutoConnecting = false;
@@ -113,7 +121,7 @@ export class MenuScene extends Phaser.Scene {
     const player = this.add.sprite(cx, heroY, `${selChar.id}-${selChar.anims.idle.sheet}`).setScale(1.5).setDepth(5);
     player.play(`${selChar.id}-anim-idle`);
 
-    this.add.rectangle(cx, panelY, 320, 118, 0x111426, 0.9)
+    this.add.rectangle(cx, panelY, 320, 148, 0x111426, 0.9)
       .setStrokeStyle(2, 0x7b2d8e)
       .setDepth(5);
 
@@ -157,11 +165,47 @@ export class MenuScene extends Phaser.Scene {
       wordWrap: { width: Math.min(300, GAME_WIDTH - 80), useAdvancedWrap: true },
     }).setOrigin(0.5).setDepth(5);
 
+    // Network selector (visible when disconnected)
+    const netY = panelY + 80;
+    this.networkLabel = this.add.text(cx, netY, "", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: "9px",
+      color: "#c850c0",
+      align: "center",
+    }).setOrigin(0.5).setDepth(5);
+
+    const arrowW = 22;
+    const arrowH = 22;
+    this.networkLeftBg = this.add.rectangle(cx - 70, netY, arrowW, arrowH, 0x2a2a3e)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.networkLeftLabel = this.add.text(cx - 70, netY, "<", {
+      fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#aaaacc",
+    }).setOrigin(0.5).setDepth(5);
+    this.networkLeftBg.on("pointerdown", () => this.cycleNetwork(-1));
+    this.networkLeftBg.on("pointerover", () => this.networkLeftBg.setFillStyle(0x4a4a5e));
+    this.networkLeftBg.on("pointerout", () => this.networkLeftBg.setFillStyle(0x2a2a3e));
+
+    this.networkRightBg = this.add.rectangle(cx + 70, netY, arrowW, arrowH, 0x2a2a3e)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.networkRightLabel = this.add.text(cx + 70, netY, ">", {
+      fontFamily: '"Press Start 2P"', fontSize: "10px", color: "#aaaacc",
+    }).setOrigin(0.5).setDepth(5);
+    this.networkRightBg.on("pointerdown", () => this.cycleNetwork(1));
+    this.networkRightBg.on("pointerover", () => this.networkRightBg.setFillStyle(0x4a4a5e));
+    this.networkRightBg.on("pointerout", () => this.networkRightBg.setFillStyle(0x2a2a3e));
+
+    // Set initial selection from saved player or default
+    const savedNet = this.playerData?.network_id ?? DEFAULT_NETWORK;
+    this.selectedNetworkIndex = Math.max(0, MIDNIGHT_NETWORKS.findIndex(n => n.id === savedNet));
+    this.updateNetworkLabel();
+
     const btnW = 210;
     const btnH = 34;
     const btnFont = "10px";
     const btnGap = 38;
-    const btn1Y = panelY + 104;
+    const btn1Y = panelY + 118;
     const btn2Y = btn1Y + btnGap;
     const btn3Y = btn2Y + btnGap;
 
@@ -328,28 +372,34 @@ export class MenuScene extends Phaser.Scene {
       this.statusText.setColor("#aa88cc");
     }
 
+    const networkId = this.getSelectedNetworkId();
     if (hasPlayer && this.playerData) {
       const playerIdentifier = getPlayerIdentifier(this.playerData);
       this.addressText.setText(
         this.playerData.wallet_address ? shortenWalletAddress(playerIdentifier) : playerIdentifier,
       );
       this.addressText.setColor("#ffffff");
-      this.hintText.setText(`Wallet address is your runner ID on ${MIDNIGHT_NETWORK_ID}.`);
+      this.hintText.setText(`Wallet address is your runner ID on ${this.playerData.network_id ?? networkId}.`);
     } else if (isReconnecting) {
       this.addressText.setText("Checking Midnight Lace and restoring your runner identity.");
       this.addressText.setColor("#88ccff");
-      this.hintText.setText(`Expected network: ${MIDNIGHT_NETWORK_ID}.`);
+      this.hintText.setText(`Expected network: ${networkId}.`);
       this.connectLabel.setText("RECONNECTING...");
     } else {
       this.addressText.setText("Connect Midnight Lace to use your wallet address for scores, achievements, and records.");
       this.addressText.setColor("#88ccff");
-      this.hintText.setText(`Expected network: ${MIDNIGHT_NETWORK_ID}. No alias entry is needed.`);
+      this.hintText.setText("");
       this.connectLabel.setText(this.isConnecting ? "CONNECTING..." : "CONNECT WALLET");
     }
 
-    // Show connect button when disconnected, show run/achievements/logout when connected
+    // Show connect button + network selector when disconnected, show run/achievements/logout when connected
     this.connectBg.setVisible(!hasPlayer);
     this.connectLabel.setVisible(!hasPlayer);
+    this.networkLabel.setVisible(!hasPlayer);
+    this.networkLeftBg.setVisible(!hasPlayer);
+    this.networkLeftLabel.setVisible(!hasPlayer);
+    this.networkRightBg.setVisible(!hasPlayer);
+    this.networkRightLabel.setVisible(!hasPlayer);
     this.runBg.setVisible(hasPlayer);
     this.runLabel.setVisible(hasPlayer);
     this.achievementsBg.setVisible(hasPlayer);
@@ -397,9 +447,10 @@ export class MenuScene extends Phaser.Scene {
     this.errorText.setText("");
     this.refreshWalletUi();
 
+    const networkId = this.getSelectedNetworkId();
     try {
-      const { address } = await connectMidnightWallet();
-      const player = await api.registerWallet(address, MIDNIGHT_NETWORK_ID);
+      const { address } = await connectMidnightWallet(networkId);
+      const player = await api.registerWallet(address, networkId);
       if (player.auth_token) {
         setAuthToken(player.auth_token);
         localStorage.setItem("mr_auth_token", player.auth_token);
@@ -409,7 +460,7 @@ export class MenuScene extends Phaser.Scene {
       this.refreshWalletUi();
     } catch (error) {
       if (!isAutoConnect) {
-        this.errorText.setText(getMidnightWalletError(error));
+        this.errorText.setText(getMidnightWalletError(error, networkId));
       }
       console.error(error);
     } finally {
@@ -436,6 +487,26 @@ export class MenuScene extends Phaser.Scene {
 
     this.errorText.setText("");
     this.scene.start("CharacterSelectScene", { player: this.playerData });
+  }
+
+  private getSelectedNetworkId(): MidnightNetworkId {
+    return MIDNIGHT_NETWORKS[this.selectedNetworkIndex].id;
+  }
+
+  private cycleNetwork(dir: number) {
+    const enabledIndices = MIDNIGHT_NETWORKS
+      .map((n, i) => n.enabled ? i : -1)
+      .filter(i => i >= 0);
+    const currentPos = enabledIndices.indexOf(this.selectedNetworkIndex);
+    const nextPos = (currentPos + dir + enabledIndices.length) % enabledIndices.length;
+    this.selectedNetworkIndex = enabledIndices[nextPos];
+    this.updateNetworkLabel();
+    this.refreshWalletUi();
+  }
+
+  private updateNetworkLabel() {
+    const net = MIDNIGHT_NETWORKS[this.selectedNetworkIndex];
+    this.networkLabel.setText(net.label.toUpperCase());
   }
 
   private cleanup() {
