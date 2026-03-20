@@ -142,7 +142,10 @@ export class GameScene extends Phaser.Scene {
 
     api.startSession(this.playerData.id)
       .then(({ token }) => { this.sessionToken = token; })
-      .catch(() => { /* offline-ok, will fall back to legacy submit */ });
+      .catch(() => {
+        this.sessionToken = "";
+        this.showToast("Offline — score won't be saved");
+      });
 
     this.player = new Player(this, this.characterId);
     this.player.startRun();

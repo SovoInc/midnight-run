@@ -176,15 +176,40 @@ impl Db {
     }
 
     /// Validate an auth token. Returns Some(player_id) if valid.
+    /// Tokens expire after 30 days.
     pub fn validate_auth_token(&self, token: &str) -> Result<Option<i64>> {
         let conn = self.conn.lock().unwrap();
         let result = conn.query_row(
-            "SELECT player_id FROM auth_tokens WHERE token = ?1",
+            "SELECT player_id FROM auth_tokens WHERE token = ?1 AND created_at > datetime('now', '-30 days')",
             params![token],
             |r| r.get::<_, i64>(0),
         );
         match result {
             Ok(pid) => Ok(Some(pid)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Remove auth tokens older than 30 days.
+    pub fn prune_expired_tokens(&self) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM auth_tokens WHERE created_at <= datetime('now', '-30 days')",
+            [],
+        )
+    }
+
+    /// Get the wallet_address for a player.
+    pub fn player_wallet(&self, player_id: i64) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT wallet_address FROM players WHERE id = ?1",
+            params![player_id],
+            |r| r.get::<_, Option<String>>(0),
+        );
+        match result {
+            Ok(w) => Ok(w),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
         }

@@ -30,7 +30,6 @@ export interface RunData {
 
 export interface RunSubmission {
   player_id: number;
-  session_token: string;
   raw_distance: number;
   orbs_collected: number;
   near_misses: number;
@@ -85,6 +84,28 @@ function authHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (_authToken) h["Authorization"] = `Bearer ${_authToken}`;
   return h;
+}
+
+function base64url(data: ArrayBuffer | Uint8Array | string): string {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function signRunJWT(payload: RunSubmission, secret: string): Promise<string> {
+  const header = base64url('{"alg":"HS256","typ":"JWT"}');
+  const body = base64url(JSON.stringify(payload));
+  const message = `${header}.${body}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return `${message}.${base64url(sig)}`;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -143,7 +164,10 @@ export const api = {
   startSession: (playerId: number) =>
     post<{ token: string }>("/api/session/start", { player_id: playerId }),
 
-  submitRun: (data: RunSubmission) => post<RunResult>("/api/run", data),
+  submitRun: async (data: RunSubmission, sessionToken: string): Promise<RunResult> => {
+    const runToken = await signRunJWT(data, sessionToken);
+    return post<RunResult>("/api/run", { session_token: sessionToken, run_token: runToken });
+  },
 
   submitScore: (data: RunData) => post<{ id: number }>("/api/scores", data),
 

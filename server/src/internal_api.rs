@@ -3,6 +3,18 @@ use crate::db::Db;
 use crate::models::*;
 use crate::scoring;
 use crate::achievement_eval;
+use crate::session::AppState;
+
+fn is_valid_wallet_address(addr: &str) -> bool {
+    if addr.len() < 40 || addr.len() > 200 {
+        return false;
+    }
+    if !addr.starts_with("mn_shield-addr_") {
+        return false;
+    }
+    let body = &addr["mn_shield-addr_".len()..];
+    body.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 
 /// Extract and validate auth token from Authorization header.
 /// Returns the authenticated player_id, or None if invalid/missing.
@@ -45,6 +57,9 @@ async fn post_wallet(db: web::Data<Db>, body: web::Json<WalletRequest>) -> HttpR
     if wallet_address.is_empty() {
         return HttpResponse::BadRequest().body("wallet_address is required");
     }
+    if !is_valid_wallet_address(wallet_address) {
+        return HttpResponse::BadRequest().body("invalid wallet address format");
+    }
     let network_id = if body.network_id.is_empty() { "preview" } else { &body.network_id };
 
     match db.upsert_wallet(wallet_address, network_id) {
@@ -63,24 +78,62 @@ async fn post_wallet(db: web::Data<Db>, body: web::Json<WalletRequest>) -> HttpR
     }
 }
 
-async fn post_session_start(req: HttpRequest, db: web::Data<Db>, body: web::Json<SessionStartRequest>) -> HttpResponse {
+async fn post_session_start(req: HttpRequest, db: web::Data<Db>, app: web::Data<AppState>, body: web::Json<SessionStartRequest>) -> HttpResponse {
     match authenticate(&req, &db) {
         Some(pid) if pid == body.player_id => {},
         _ => return HttpResponse::Unauthorized().json(serde_json::json!({ "error": "unauthorized" })),
     }
-    match db.create_run_session(body.player_id) {
+
+    let wallet = match db.player_wallet(body.player_id) {
+        Ok(Some(w)) => w,
+        Ok(None) => return HttpResponse::BadRequest().json(serde_json::json!({ "error": "player has no wallet" })),
+        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+    };
+
+    let session_id = match db.create_run_session(body.player_id) {
+        Ok(id) => id,
+        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+    };
+
+    match app.create_session_token(&session_id, body.player_id, &wallet) {
         Ok(token) => HttpResponse::Ok().json(serde_json::json!({ "token": token })),
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+        Err(e) => HttpResponse::InternalServerError().body(e),
     }
 }
 
-async fn post_run(req: HttpRequest, db: web::Data<Db>, body: web::Json<RunSubmission>) -> HttpResponse {
+async fn post_run(req: HttpRequest, db: web::Data<Db>, app: web::Data<AppState>, body: web::Json<RunSubmission>) -> HttpResponse {
+    // 1. Decode the run JWT using the session token as HMAC key
+    let run = match app.decode_run_token(&body.run_token, &body.session_token) {
+        Ok(r) => r,
+        Err(msg) => return HttpResponse::BadRequest().json(serde_json::json!({ "error": msg })),
+    };
+
+    // 2. Authenticate: Bearer token must match player_id inside the run
     match authenticate(&req, &db) {
-        Some(pid) if pid == body.player_id => {},
+        Some(pid) if pid == run.player_id => {},
         _ => return HttpResponse::Unauthorized().json(serde_json::json!({ "error": "unauthorized" })),
     }
-    // 1. Consume session token
-    let (valid, created_at) = match db.consume_run_session(&body.session_token, body.player_id) {
+
+    // 3. Look up wallet for session JWT verification
+    let wallet = match db.player_wallet(run.player_id) {
+        Ok(Some(w)) => w,
+        Ok(None) => return HttpResponse::BadRequest().json(serde_json::json!({ "error": "player has no wallet" })),
+        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+    };
+
+    // 4. Validate session JWT (signed with server_secret + wallet_address)
+    let (session_id, session_pid, _elapsed_ms) =
+        match app.validate_session_token(&body.session_token, &wallet) {
+            Ok(v) => v,
+            Err(msg) => return HttpResponse::BadRequest().json(serde_json::json!({ "error": msg })),
+        };
+
+    if session_pid != run.player_id {
+        return HttpResponse::BadRequest().json(serde_json::json!({ "error": "session/run player mismatch" }));
+    }
+
+    // 5. Consume DB session (one-time use) and get created_at for elapsed check
+    let (valid, created_at) = match db.consume_run_session(&session_id, run.player_id) {
         Ok(r) => r,
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
@@ -90,7 +143,7 @@ async fn post_run(req: HttpRequest, db: web::Data<Db>, body: web::Json<RunSubmis
         );
     }
 
-    // 2. Compute session elapsed time
+    // 6. Compute session elapsed time
     let session_elapsed = {
         let now = chrono::Utc::now().naive_utc();
         let created = chrono::NaiveDateTime::parse_from_str(&created_at, "%Y-%m-%d %H:%M:%S")
@@ -98,10 +151,10 @@ async fn post_run(req: HttpRequest, db: web::Data<Db>, body: web::Json<RunSubmis
         (now - created).num_milliseconds() as f64 / 1000.0
     };
 
-    // 3. Validate plausibility
+    // 7. Validate plausibility
     if let Err(e) = scoring::validate_run(
-        body.raw_distance, body.orbs_collected, body.near_misses,
-        body.dashes_used, body.walls_broken, body.duration_secs,
+        run.raw_distance, run.orbs_collected, run.near_misses,
+        run.dashes_used, run.walls_broken, run.duration_secs,
         session_elapsed,
     ) {
         return HttpResponse::UnprocessableEntity().json(
@@ -109,49 +162,48 @@ async fn post_run(req: HttpRequest, db: web::Data<Db>, body: web::Json<RunSubmis
         );
     }
 
-    // 4. Compute score server-side
-    let computed = scoring::compute_score(body.raw_distance, body.orbs_collected, body.near_misses);
+    // 8. Compute score server-side
+    let computed = scoring::compute_score(run.raw_distance, run.orbs_collected, run.near_misses);
 
-    // 5. Insert score row
+    // 9. Insert score row
     let score_id = match db.insert_score(
-        body.player_id, computed.score, computed.display_distance,
-        body.orbs_collected, body.near_misses, body.dashes_used,
-        body.walls_broken, body.duration_secs,
-        body.raw_distance, body.damage_taken, body.reached_max_speed,
+        run.player_id, computed.score, computed.display_distance,
+        run.orbs_collected, run.near_misses, run.dashes_used,
+        run.walls_broken, run.duration_secs,
+        run.raw_distance, run.damage_taken, run.reached_max_speed,
     ) {
         Ok(id) => id,
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
 
-    // 6. Evaluate achievements
-    // Resolve network_id for this player
+    // 10. Evaluate achievements
     let network_id = {
         let conn = db.conn.lock().unwrap();
         conn.query_row(
             "SELECT network_id FROM players WHERE id = ?1",
-            rusqlite::params![body.player_id],
+            rusqlite::params![run.player_id],
             |r| r.get::<_, String>(0),
         ).unwrap_or_else(|_| "preview".to_string())
     };
 
     let run_input = achievement_eval::RunInput {
-        raw_distance: body.raw_distance,
+        raw_distance: run.raw_distance,
         display_distance: computed.display_distance,
-        orbs_collected: body.orbs_collected,
-        near_misses: body.near_misses,
-        dashes_used: body.dashes_used,
-        walls_broken: body.walls_broken,
+        orbs_collected: run.orbs_collected,
+        near_misses: run.near_misses,
+        dashes_used: run.dashes_used,
+        walls_broken: run.walls_broken,
         score: computed.score,
-        reached_max_speed: body.reached_max_speed,
-        damage_taken: body.damage_taken,
+        reached_max_speed: run.reached_max_speed,
+        damage_taken: run.damage_taken,
     };
 
-    let achievements = achievement_eval::evaluate_achievements(&db, body.player_id, &run_input, &network_id);
+    let achievements = achievement_eval::evaluate_achievements(&db, run.player_id, &run_input, &network_id);
 
-    // 7. Credit orbs to player inventory
-    let orb_balance = db.credit_orbs(body.player_id, body.orbs_collected).unwrap_or(0);
+    // 11. Credit orbs to player inventory
+    let orb_balance = db.credit_orbs(run.player_id, run.orbs_collected).unwrap_or(0);
 
-    // 8. Return result
+    // 12. Return result
     HttpResponse::Ok().json(RunResult {
         score_id,
         score: computed.score,

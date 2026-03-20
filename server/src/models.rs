@@ -44,8 +44,14 @@ pub struct SessionStartRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct RunSubmission {
-    pub player_id: i64,
     pub session_token: String,
+    pub run_token: String,
+}
+
+/// The run data inside the client-signed JWT.
+#[derive(Debug)]
+pub struct RunPayload {
+    pub player_id: i64,
     pub raw_distance: f64,
     pub orbs_collected: i64,
     pub near_misses: i64,

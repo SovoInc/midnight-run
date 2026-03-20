@@ -62,7 +62,6 @@ export class GameOverScene extends Phaser.Scene {
     if (d.sessionToken) {
       const submission: RunSubmission = {
         player_id: d.player.id,
-        session_token: d.sessionToken,
         raw_distance: d.rawDistance,
         orbs_collected: d.orbsCollected,
         near_misses: d.nearMisses,
@@ -73,7 +72,7 @@ export class GameOverScene extends Phaser.Scene {
         damage_taken: d.damageTaken,
       };
       try {
-        const result = await api.submitRun(submission);
+        const result = await api.submitRun(submission, d.sessionToken);
         displayScore = result.score;
         displayDistance = result.distance;
         newAchievements = result.achievements_display;
