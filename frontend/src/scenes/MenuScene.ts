@@ -121,52 +121,54 @@ export class MenuScene extends Phaser.Scene {
     const player = this.add.sprite(cx, heroY, `${selChar.id}-${selChar.anims.idle.sheet}`).setScale(1.5).setDepth(5);
     player.play(`${selChar.id}-anim-idle`);
 
-    this.add.rectangle(cx, panelY, 320, 148, 0x111426, 0.9)
+    // Panel layout — vertical flow with consistent gaps
+    const panelW = 320;
+    const panelH = 180;
+    const panelTop = panelY - panelH / 2;
+    let row = panelTop + 18; // first row inside panel
+
+    this.add.rectangle(cx, panelY, panelW, panelH, 0x111426, 0.9)
       .setStrokeStyle(2, 0x7b2d8e)
       .setDepth(5);
 
-    this.add.text(cx, panelY - 38, "MIDNIGHT WALLET LOGIN", {
+    this.add.text(cx, row, "MIDNIGHT WALLET LOGIN", {
       fontFamily: '"Press Start 2P"',
       fontSize: "10px",
       color: "#8866aa",
       align: "center",
     }).setOrigin(0.5).setDepth(5);
+    row += 24;
 
-    this.statusText = this.add.text(cx, panelY - 14, "", {
+    this.statusText = this.add.text(cx, row, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "8px",
       color: "#ffdd44",
       align: "center",
     }).setOrigin(0.5).setDepth(5);
+    row += 20;
 
-    this.addressText = this.add.text(cx, panelY + 12, "", {
+    const wrapW = Math.min(280, GAME_WIDTH - 90);
+    this.addressText = this.add.text(cx, row, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "7px",
       color: "#ffffff",
       align: "center",
-      wordWrap: { width: Math.min(280, GAME_WIDTH - 90), useAdvancedWrap: true },
+      wordWrap: { width: wrapW, useAdvancedWrap: true },
       lineSpacing: 8,
-    }).setOrigin(0.5).setDepth(5);
+    }).setOrigin(0.5, 0).setDepth(5);
+    row += 44;
 
-    this.hintText = this.add.text(cx, panelY + 44, "", {
+    this.hintText = this.add.text(cx, row, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "7px",
       color: "#88ccff",
       align: "center",
-      wordWrap: { width: Math.min(280, GAME_WIDTH - 90), useAdvancedWrap: true },
+      wordWrap: { width: wrapW, useAdvancedWrap: true },
       lineSpacing: 8,
     }).setOrigin(0.5).setDepth(5);
 
-    this.errorText = this.add.text(cx, panelY + 74, "", {
-      fontFamily: '"Press Start 2P"',
-      fontSize: "8px",
-      color: "#ff6666",
-      align: "center",
-      wordWrap: { width: Math.min(300, GAME_WIDTH - 80), useAdvancedWrap: true },
-    }).setOrigin(0.5).setDepth(5);
-
-    // Network selector (visible when disconnected)
-    const netY = panelY + 80;
+    // Network selector (inside panel, near bottom)
+    const netY = panelTop + panelH - 24;
     this.networkLabel = this.add.text(cx, netY, "", {
       fontFamily: '"Press Start 2P"',
       fontSize: "9px",
@@ -201,11 +203,21 @@ export class MenuScene extends Phaser.Scene {
     this.selectedNetworkIndex = Math.max(0, MIDNIGHT_NETWORKS.findIndex(n => n.id === savedNet));
     this.updateNetworkLabel();
 
+    // Error text — between panel and buttons
+    const errorY = panelTop + panelH + 16;
+    this.errorText = this.add.text(cx, errorY, "", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: "8px",
+      color: "#ff6666",
+      align: "center",
+      wordWrap: { width: Math.min(300, GAME_WIDTH - 80), useAdvancedWrap: true },
+    }).setOrigin(0.5).setDepth(5);
+
     const btnW = 210;
     const btnH = 34;
     const btnFont = "10px";
     const btnGap = 38;
-    const btn1Y = panelY + 118;
+    const btn1Y = panelTop + panelH + 36;
     const btn2Y = btn1Y + btnGap;
     const btn3Y = btn2Y + btnGap;
 
