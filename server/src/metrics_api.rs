@@ -98,7 +98,7 @@ async fn get_user_profile(
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
 
-    let (player_id, alias, wallet, sessions) = resolved;
+    let (player_id, alias, wallet, sessions, _network_id) = resolved;
     let canonical_address = wallet.clone().unwrap_or_else(|| format!("alias:{}", alias));
 
     let achievement_names: Vec<String> = db.player_achievements(player_id)

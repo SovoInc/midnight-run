@@ -537,19 +537,19 @@ impl Db {
         Ok((total_players, total_score, rows))
     }
 
-    pub fn resolve_player_by_address(&self, address: &str) -> Result<Option<(i64, String, Option<String>, Vec<String>)>> {
+    pub fn resolve_player_by_address(&self, address: &str) -> Result<Option<(i64, String, Option<String>, Vec<String>, String)>> {
         let conn = self.conn.lock().unwrap();
 
         // Try wallet_address first
         let maybe = conn.query_row(
-            "SELECT id, alias, wallet_address FROM players WHERE wallet_address = ?1",
+            "SELECT id, alias, wallet_address, COALESCE(network_id, 'preview') FROM players WHERE wallet_address = ?1",
             params![address],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?)),
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?, row.get::<_, String>(3)?)),
         );
-        if let Ok((id, alias, wallet)) = maybe {
+        if let Ok((id, alias, wallet, network_id)) = maybe {
             let mut stmt = conn.prepare("SELECT session_address FROM session_wallets WHERE main_player_id = ?1")?;
             let sessions: Vec<String> = stmt.query_map(params![id], |r| r.get(0))?.collect::<Result<Vec<_>>>()?;
-            return Ok(Some((id, alias, wallet, sessions)));
+            return Ok(Some((id, alias, wallet, sessions, network_id)));
         }
 
         // Try session wallet
@@ -559,26 +559,26 @@ impl Db {
             |row| row.get::<_, i64>(0),
         );
         if let Ok(pid) = maybe_session {
-            let (alias, wallet): (String, Option<String>) = conn.query_row(
-                "SELECT alias, wallet_address FROM players WHERE id = ?1",
-                params![pid], |r| Ok((r.get(0)?, r.get(1)?)),
+            let (alias, wallet, network_id): (String, Option<String>, String) = conn.query_row(
+                "SELECT alias, wallet_address, COALESCE(network_id, 'preview') FROM players WHERE id = ?1",
+                params![pid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )?;
             let mut stmt = conn.prepare("SELECT session_address FROM session_wallets WHERE main_player_id = ?1")?;
             let sessions: Vec<String> = stmt.query_map(params![pid], |r| r.get(0))?.collect::<Result<Vec<_>>>()?;
-            return Ok(Some((pid, alias, wallet, sessions)));
+            return Ok(Some((pid, alias, wallet, sessions, network_id)));
         }
 
         // Try alias-based address
         if let Some(alias) = address.strip_prefix("alias:") {
             let maybe_alias = conn.query_row(
-                "SELECT id, alias, wallet_address FROM players WHERE alias = ?1",
+                "SELECT id, alias, wallet_address, COALESCE(network_id, 'preview') FROM players WHERE alias = ?1",
                 params![alias],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?)),
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?, row.get::<_, String>(3)?)),
             );
-            if let Ok((id, alias, wallet)) = maybe_alias {
+            if let Ok((id, alias, wallet, network_id)) = maybe_alias {
                 let mut stmt = conn.prepare("SELECT session_address FROM session_wallets WHERE main_player_id = ?1")?;
                 let sessions: Vec<String> = stmt.query_map(params![id], |r| r.get(0))?.collect::<Result<Vec<_>>>()?;
-                return Ok(Some((id, alias, wallet, sessions)));
+                return Ok(Some((id, alias, wallet, sessions, network_id)));
             }
         }
 

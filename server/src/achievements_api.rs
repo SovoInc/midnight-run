@@ -45,7 +45,7 @@ async fn public_list(db: web::Data<Db>, query: web::Query<Prc1ListQuery>) -> Htt
         name: "Midnight Run".into(),
         version: "0.1.0".into(),
         block: 0,
-        caip2: "midnight:mainnet".into(),
+        caip2: format!("midnight:{network_id}"),
         time: now,
         achievements,
     })
@@ -60,7 +60,7 @@ async fn wallet_achievements(db: web::Data<Db>, path: web::Path<String>) -> Http
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
 
-    let (player_id, alias, wallet_addr, _sessions) = resolved;
+    let (player_id, alias, wallet_addr, _sessions, network_id) = resolved;
 
     let unlocked: std::collections::HashSet<String> = db.player_achievements(player_id)
         .unwrap_or_default()
@@ -105,7 +105,7 @@ async fn wallet_achievements(db: web::Data<Db>, path: web::Path<String>) -> Http
 
     HttpResponse::Ok().json(Prc1PlayerAchievements {
         block: 0,
-        caip2: "midnight:mainnet".into(),
+        caip2: format!("midnight:{network_id}"),
         time: now,
         wallet,
         user_name: wallet_addr.or(Some(alias)),
