@@ -58,11 +58,12 @@ async fn get_channel_rankings(
     let limit = query.limit.unwrap_or(50).min(1000);
     let offset = query.offset.unwrap_or(0);
     let network_id = query.network_id.as_deref().unwrap_or("preview");
+    let min_ach = query.min_achievements;
 
     let result = match channel.as_str() {
-        "leaderboard" => db.channel_leaderboard(&start, &end, limit, offset, network_id),
-        "interactions" => db.channel_interactions(&start, &end, limit, offset, network_id),
-        "orbs_collected" | "distance" | "near_misses" => db.channel_cumulative(&channel, &start, &end, limit, offset, network_id),
+        "leaderboard" => db.channel_leaderboard(&start, &end, limit, offset, network_id, min_ach),
+        "interactions" => db.channel_interactions(&start, &end, limit, offset, network_id, min_ach),
+        "orbs_collected" | "distance" | "near_misses" => db.channel_cumulative(&channel, &start, &end, limit, offset, network_id, min_ach),
         _ => return HttpResponse::NotFound().json(serde_json::json!({ "error": "unknown channel" })),
     };
 
@@ -106,6 +107,10 @@ async fn get_user_profile(
         .map(|(key, _)| key)
         .collect();
 
+    let now = chrono::Utc::now();
+    let start = query.start_date.clone().unwrap_or_else(|| (now - chrono::Duration::days(365)).format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+    let end = query.end_date.clone().unwrap_or_else(|| now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+
     let channels_data = if let Some(ref channel_ids) = query.channel {
         let mut map = serde_json::Map::new();
         for ch in channel_ids {
@@ -126,6 +131,8 @@ async fn get_user_profile(
             };
             let runs = db.player_aggregate(player_id, "runs").unwrap_or(0.0) as i64;
             map.insert(ch.clone(), serde_json::json!({
+                "startDate": start,
+                "endDate": end,
                 "stats": { "score": score, "rank": rank, "matchesPlayed": runs }
             }));
         }
