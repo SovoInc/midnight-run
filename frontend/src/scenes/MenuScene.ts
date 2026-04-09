@@ -43,6 +43,8 @@ export class MenuScene extends Phaser.Scene {
   private networkLeftLabel!: Phaser.GameObjects.Text;
   private networkRightBg!: Phaser.GameObjects.Rectangle;
   private networkRightLabel!: Phaser.GameObjects.Text;
+  private demoBg!: Phaser.GameObjects.Rectangle;
+  private demoLabel!: Phaser.GameObjects.Text;
   private selectedNetworkIndex = 0;
   private isConnecting = false;
   private hasAttemptedAutoConnect = false;
@@ -237,6 +239,20 @@ export class MenuScene extends Phaser.Scene {
     this.connectBg.on("pointerout", () => this.refreshButtons());
     this.connectBg.on("pointerdown", () => void this.connectWallet());
 
+    // Demo button (visible when disconnected, below connect)
+    this.demoBg = this.add.rectangle(cx, btn2Y, btnW, btnH, 0x2a2a3e)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(5);
+    this.demoLabel = this.add.text(cx, btn2Y, "DEMO", {
+      fontFamily: '"Press Start 2P"',
+      fontSize: btnFont,
+      color: "#aaaacc",
+    }).setOrigin(0.5).setDepth(5);
+
+    this.demoBg.on("pointerover", () => this.demoBg.setFillStyle(0x4a4a5e));
+    this.demoBg.on("pointerout", () => this.demoBg.setFillStyle(0x2a2a3e));
+    this.demoBg.on("pointerdown", () => this.startDemo());
+
     // Run button (slot 1 when connected)
     this.runBg = this.add.rectangle(cx, btn1Y, btnW, btnH, 0x7b2d8e)
       .setInteractive({ useHandCursor: true })
@@ -407,6 +423,8 @@ export class MenuScene extends Phaser.Scene {
     // Show connect button + network selector when disconnected, show run/achievements/logout when connected
     this.connectBg.setVisible(!hasPlayer);
     this.connectLabel.setVisible(!hasPlayer);
+    this.demoBg.setVisible(!hasPlayer);
+    this.demoLabel.setVisible(!hasPlayer);
     this.networkLabel.setVisible(!hasPlayer);
     this.networkLeftBg.setVisible(!hasPlayer);
     this.networkLeftLabel.setVisible(!hasPlayer);
@@ -499,6 +517,16 @@ export class MenuScene extends Phaser.Scene {
 
     this.errorText.setText("");
     this.scene.start("CharacterSelectScene", { player: this.playerData });
+  }
+
+  private startDemo() {
+    const demoPlayer: PlayerData = {
+      id: 0,
+      alias: "Guest",
+      wallet_address: null,
+      network_id: "demo",
+    };
+    this.scene.start("CharacterSelectScene", { player: demoPlayer });
   }
 
   private getSelectedNetworkId(): MidnightNetworkId {
