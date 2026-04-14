@@ -384,6 +384,8 @@ export class MenuScene extends Phaser.Scene {
     const hasPlayer = Boolean(this.playerData);
     const isReconnecting = this.isAutoConnecting && !hasPlayer;
 
+    this.errorText.setText("");
+
     if (hasPlayer) {
       this.statusText.setText("CONNECTED");
       this.statusText.setColor("#77cc77");
