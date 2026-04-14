@@ -131,11 +131,11 @@ export function getPlayerIdentifier(player: Pick<PlayerData, "alias" | "wallet_a
 }
 
 export function shortenWalletAddress(value: string): string {
-  if (value.length <= 14) {
+  if (value.length <= 24) {
     return value;
   }
 
-  return `${value.slice(0, 3)}...${value.slice(-8)}`;
+  return `${value.slice(0, 16)}...${value.slice(-8)}`;
 }
 
 export function truncateIdentifier(value: string, maxLength = 18): string {

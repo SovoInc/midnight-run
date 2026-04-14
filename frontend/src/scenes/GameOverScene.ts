@@ -118,23 +118,25 @@ export class GameOverScene extends Phaser.Scene {
       dynamicY += newAchievements.length * 14 + 15;
     }
 
-    // Top scores
-    try {
-      const top = await api.getTopScores(5, d.player.network_id);
+    // Top scores (skip for demo players)
+    if (d.player.id > 0 && d.player.network_id !== "demo") {
+      try {
+        const top = await api.getTopScores(5, d.player.network_id);
 
-      this.add.text(cx, dynamicY, "LEADERBOARD", {
-        fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#8866aa",
-      }).setOrigin(0.5);
-
-      top.forEach((entry, i) => {
-        const color = entry.player_id === d.player.id ? "#c850c0" : "#6666aa";
-        const displayName = formatScoreIdentifier(entry, 22);
-        this.add.text(cx, dynamicY + 16 + i * 13, `${entry.rank}. ${displayName} - ${entry.score}`, {
-          fontFamily: '"Press Start 2P"', fontSize: "7px", color,
+        this.add.text(cx, dynamicY, "LEADERBOARD", {
+          fontFamily: '"Press Start 2P"', fontSize: "8px", color: "#8866aa",
         }).setOrigin(0.5);
-      });
-    } catch {
-      // offline
+
+        top.forEach((entry, i) => {
+          const color = entry.player_id === d.player.id ? "#c850c0" : "#6666aa";
+          const displayName = formatScoreIdentifier(entry, 22);
+          this.add.text(cx, dynamicY + 16 + i * 13, `${entry.rank}. ${displayName} - ${entry.score}`, {
+            fontFamily: '"Press Start 2P"', fontSize: "7px", color,
+          }).setOrigin(0.5);
+        });
+      } catch {
+        // offline
+      }
     }
 
     // Buttons — uniform 2-column grid

@@ -29,4 +29,7 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: "#0a0a12",
 };
 
-new Phaser.Game(config);
+// Wait for web fonts before starting Phaser so text renders correctly on first frame
+document.fonts.ready.then(() => {
+  new Phaser.Game(config);
+});
