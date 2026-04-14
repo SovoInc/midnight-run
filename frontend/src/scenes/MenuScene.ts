@@ -408,7 +408,7 @@ export class MenuScene extends Phaser.Scene {
       this.hintText.setText("");
       this.connectLabel.setText("RECONNECTING...");
     } else {
-      this.addressText.setText("Connect Midnight Lace to use your wallet address for scores, achievements, and records.");
+      this.addressText.setText("Connect your Midnight wallet for scores, achievements, and records.");
       this.addressText.setColor("#88ccff");
       this.hintText.setText("");
       this.connectLabel.setText(this.isConnecting ? "CONNECTING..." : "CONNECT WALLET");

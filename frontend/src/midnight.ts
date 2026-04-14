@@ -157,7 +157,7 @@ export function watchWalletSync(
 
 export function getMidnightWalletError(error: unknown, networkId?: string): string {
   if (!hasMidnightWallet()) {
-    return "install Midnight Lace to continue";
+    return "install a Midnight wallet to continue";
   }
 
   const message =
