@@ -9,10 +9,14 @@ fn is_valid_wallet_address(addr: &str) -> bool {
     if addr.len() < 40 || addr.len() > 200 {
         return false;
     }
-    if !addr.starts_with("mn_shield-addr_") {
+    // Testnet uses "mn_shield-addr_" prefix; mainnet Bech32m uses "mn_shield-addr1"
+    let body = if let Some(b) = addr.strip_prefix("mn_shield-addr_") {
+        b
+    } else if let Some(b) = addr.strip_prefix("mn_shield-addr1") {
+        b
+    } else {
         return false;
-    }
-    let body = &addr["mn_shield-addr_".len()..];
+    };
     body.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
@@ -46,7 +50,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 async fn post_alias(db: web::Data<Db>, body: web::Json<AliasRequest>) -> HttpResponse {
     match db.upsert_alias(&body.alias) {
         Ok((id, alias, wallet)) => HttpResponse::Ok().json(Player {
-            id, alias, wallet_address: wallet, network_id: "preview".to_string(), created_at: String::new(),
+            id, alias, wallet_address: wallet, network_id: "mainnet".to_string(), created_at: String::new(),
         }),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
@@ -60,7 +64,7 @@ async fn post_wallet(db: web::Data<Db>, body: web::Json<WalletRequest>) -> HttpR
     if !is_valid_wallet_address(wallet_address) {
         return HttpResponse::BadRequest().body("invalid wallet address format");
     }
-    let network_id = if body.network_id.is_empty() { "preview" } else { &body.network_id };
+    let network_id = if body.network_id.is_empty() { "mainnet" } else { &body.network_id };
 
     match db.upsert_wallet(wallet_address, network_id) {
         Ok((id, alias, wallet, net)) => {
@@ -183,7 +187,7 @@ async fn post_run(req: HttpRequest, db: web::Data<Db>, app: web::Data<AppState>,
             "SELECT network_id FROM players WHERE id = ?1",
             rusqlite::params![run.player_id],
             |r| r.get::<_, String>(0),
-        ).unwrap_or_else(|_| "preview".to_string())
+        ).unwrap_or_else(|_| "mainnet".to_string())
     };
 
     let run_input = achievement_eval::RunInput {
@@ -233,7 +237,7 @@ async fn post_score(req: HttpRequest, db: web::Data<Db>, body: web::Json<ScoreSu
 
 async fn get_top_scores(db: web::Data<Db>, query: web::Query<LimitQuery>) -> HttpResponse {
     let limit = query.limit.unwrap_or(20).min(100);
-    let network_id = query.network_id.as_deref().unwrap_or("preview");
+    let network_id = query.network_id.as_deref().unwrap_or("mainnet");
     match db.top_scores(limit, network_id) {
         Ok(rows) => {
             let entries: Vec<ScoreEntry> = rows.into_iter().enumerate().map(|(i, (_, display_name, wallet_address, score, dist, pid))| {

@@ -22,7 +22,7 @@ pub struct WalletRequest {
 }
 
 fn default_network() -> String {
-    "preview".to_string()
+    "mainnet".to_string()
 }
 
 #[derive(Debug, Deserialize)]

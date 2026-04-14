@@ -12,7 +12,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 async fn public_list(db: web::Data<Db>, query: web::Query<Prc1ListQuery>) -> HttpResponse {
-    let network_id = query.network_id.as_deref().unwrap_or("preview");
+    let network_id = query.network_id.as_deref().unwrap_or("mainnet");
     let total = db.total_players(network_id).unwrap_or(0);
 
     let mut achievements: Vec<Prc1Achievement> = ACHIEVEMENTS.iter().filter(|a| {

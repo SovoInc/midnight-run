@@ -7,10 +7,8 @@ import { getCharacter } from "../systems/CharacterRegistry";
 import { getSelected } from "../systems/CharacterStore";
 import {
   connectMidnightWallet,
+  watchWalletSync,
   getMidnightWalletError,
-  MIDNIGHT_NETWORKS,
-  DEFAULT_NETWORK,
-  type MidnightNetworkId,
 } from "../midnight";
 
 interface MenuBat {
@@ -45,7 +43,7 @@ export class MenuScene extends Phaser.Scene {
   private networkRightLabel!: Phaser.GameObjects.Text;
   private demoBg!: Phaser.GameObjects.Rectangle;
   private demoLabel!: Phaser.GameObjects.Text;
-  private selectedNetworkIndex = 0;
+  private selectedNetworkIndex = 0; // kept for hidden UI elements
   private isConnecting = false;
   private hasAttemptedAutoConnect = false;
   private isAutoConnecting = false;
@@ -200,10 +198,7 @@ export class MenuScene extends Phaser.Scene {
     this.networkRightBg.on("pointerover", () => this.networkRightBg.setFillStyle(0x4a4a5e));
     this.networkRightBg.on("pointerout", () => this.networkRightBg.setFillStyle(0x2a2a3e));
 
-    // Set initial selection from saved player or default
-    const savedNet = this.playerData?.network_id ?? DEFAULT_NETWORK;
-    this.selectedNetworkIndex = Math.max(0, MIDNIGHT_NETWORKS.findIndex(n => n.id === savedNet));
-    this.updateNetworkLabel();
+    // Network is auto-detected from wallet — selector is hidden
 
     // Error text — between panel and buttons
     const errorY = panelTop + panelH + 16;
@@ -400,18 +395,17 @@ export class MenuScene extends Phaser.Scene {
       this.statusText.setColor("#aa88cc");
     }
 
-    const networkId = this.getSelectedNetworkId();
     if (hasPlayer && this.playerData) {
       const playerIdentifier = getPlayerIdentifier(this.playerData);
       this.addressText.setText(
         this.playerData.wallet_address ? shortenWalletAddress(playerIdentifier) : playerIdentifier,
       );
       this.addressText.setColor("#ffffff");
-      this.hintText.setText(`Wallet address is your runner ID on ${this.playerData.network_id ?? networkId}.`);
+      this.hintText.setText(`Wallet address is your runner ID on ${this.playerData.network_id ?? "mainnet"}.`);
     } else if (isReconnecting) {
-      this.addressText.setText("Checking Midnight Lace and restoring your runner identity.");
+      this.addressText.setText("Checking wallet and restoring your runner identity.");
       this.addressText.setColor("#88ccff");
-      this.hintText.setText(`Expected network: ${networkId}.`);
+      this.hintText.setText("");
       this.connectLabel.setText("RECONNECTING...");
     } else {
       this.addressText.setText("Connect Midnight Lace to use your wallet address for scores, achievements, and records.");
@@ -425,11 +419,11 @@ export class MenuScene extends Phaser.Scene {
     this.connectLabel.setVisible(!hasPlayer);
     this.demoBg.setVisible(!hasPlayer);
     this.demoLabel.setVisible(!hasPlayer);
-    this.networkLabel.setVisible(!hasPlayer);
-    this.networkLeftBg.setVisible(!hasPlayer);
-    this.networkLeftLabel.setVisible(!hasPlayer);
-    this.networkRightBg.setVisible(!hasPlayer);
-    this.networkRightLabel.setVisible(!hasPlayer);
+    this.networkLabel.setVisible(false);
+    this.networkLeftBg.setVisible(false);
+    this.networkLeftLabel.setVisible(false);
+    this.networkRightBg.setVisible(false);
+    this.networkRightLabel.setVisible(false);
     this.runBg.setVisible(hasPlayer);
     this.runLabel.setVisible(hasPlayer);
     this.achievementsBg.setVisible(hasPlayer);
@@ -477,10 +471,18 @@ export class MenuScene extends Phaser.Scene {
     this.errorText.setText("");
     this.refreshWalletUi();
 
-    const networkId = this.getSelectedNetworkId();
     try {
-      const { address } = await connectMidnightWallet(networkId);
-      const player = await api.registerWallet(address, networkId);
+      const connection = await connectMidnightWallet();
+      const networkId = connection.networkId;
+
+      // Wait for wallet to sync with the network
+      this.connectLabel.setText("SYNCING 0%");
+      await watchWalletSync(connection.connectedApi, (pct) => {
+        this.connectLabel.setText(pct < 100 ? `SYNCING ${pct}%` : "SYNCING...");
+      });
+
+      this.connectLabel.setText("CONNECTING...");
+      const player = await api.registerWallet(connection.address, networkId);
       if (player.auth_token) {
         setAuthToken(player.auth_token);
         localStorage.setItem("mr_auth_token", player.auth_token);
@@ -490,7 +492,7 @@ export class MenuScene extends Phaser.Scene {
       this.refreshWalletUi();
     } catch (error) {
       if (!isAutoConnect) {
-        this.errorText.setText(getMidnightWalletError(error, networkId));
+        this.errorText.setText(getMidnightWalletError(error));
       }
       console.error(error);
     } finally {
@@ -529,24 +531,12 @@ export class MenuScene extends Phaser.Scene {
     this.scene.start("CharacterSelectScene", { player: demoPlayer });
   }
 
-  private getSelectedNetworkId(): MidnightNetworkId {
-    return MIDNIGHT_NETWORKS[this.selectedNetworkIndex].id;
-  }
-
-  private cycleNetwork(dir: number) {
-    const enabledIndices = MIDNIGHT_NETWORKS
-      .map((n, i) => n.enabled ? i : -1)
-      .filter(i => i >= 0);
-    const currentPos = enabledIndices.indexOf(this.selectedNetworkIndex);
-    const nextPos = (currentPos + dir + enabledIndices.length) % enabledIndices.length;
-    this.selectedNetworkIndex = enabledIndices[nextPos];
-    this.updateNetworkLabel();
-    this.refreshWalletUi();
+  private cycleNetwork(_dir: number) {
+    // Network selector disabled — network is auto-detected from wallet
   }
 
   private updateNetworkLabel() {
-    const net = MIDNIGHT_NETWORKS[this.selectedNetworkIndex];
-    this.networkLabel.setText(net.label.toUpperCase());
+    // Network selector disabled — network is auto-detected from wallet
   }
 
   private cleanup() {

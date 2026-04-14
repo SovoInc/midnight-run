@@ -13,7 +13,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 async fn get_metadata(db: web::Data<Db>, query: web::Query<ChannelQuery>) -> HttpResponse {
-    let network_id = query.network_id.as_deref().unwrap_or("preview");
+    let network_id = query.network_id.as_deref().unwrap_or("mainnet");
     let total = db.total_players(network_id).unwrap_or(0);
 
     let achievements: Vec<MetricAchievement> = ACHIEVEMENTS.iter().map(|a| {
@@ -57,7 +57,7 @@ async fn get_channel_rankings(
     let end = query.end_date.clone().unwrap_or_else(|| now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
     let limit = query.limit.unwrap_or(50).min(1000);
     let offset = query.offset.unwrap_or(0);
-    let network_id = query.network_id.as_deref().unwrap_or("preview");
+    let network_id = query.network_id.as_deref().unwrap_or("mainnet");
     let min_ach = query.min_achievements;
 
     let result = match channel.as_str() {
